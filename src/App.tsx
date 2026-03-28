@@ -1,0 +1,84 @@
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { CartProvider } from "@/context/CartContext";
+import { AuthProvider } from "@/context/AuthContext";
+import { lazy, Suspense, useEffect } from "react";
+import AppLoadingSkeleton from "@/components/AppLoadingSkeleton";
+import { isNativePlatform } from "@/lib/platform";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
+
+// Lazy-load pages for faster initial render
+const Index = lazy(() => import("./pages/Index"));
+const MenuPage = lazy(() => import("./pages/MenuPage"));
+const AuthPage = lazy(() => import("./pages/AuthPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const CheckoutPage = lazy(() => import("./pages/CheckoutPage"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+
+// Admin pages — only loaded on web, excluded from native builds
+const AdminLayout = lazy(() => import("./components/admin/AdminLayout"));
+const DashboardPage = lazy(() => import("./pages/admin/DashboardPage"));
+const OrdersPage = lazy(() => import("./pages/admin/OrdersPage"));
+const MenuManagementPage = lazy(() => import("./pages/admin/MenuManagementPage"));
+const CustomersPage = lazy(() => import("./pages/admin/CustomersPage"));
+
+const queryClient = new QueryClient();
+
+// Dismiss the HTML splash screen once React mounts
+const SplashDismisser = () => {
+  useEffect(() => {
+    const splash = document.getElementById("splash");
+    if (splash) {
+      splash.classList.add("hide");
+      setTimeout(() => splash.remove(), 500);
+    }
+  }, []);
+  return null;
+};
+
+const PushRegistrar = () => {
+  usePushNotifications();
+  return null;
+};
+
+const showAdmin = !isNativePlatform();
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <AuthProvider>
+        <CartProvider>
+          <SplashDismisser />
+          <PushRegistrar />
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Suspense fallback={<AppLoadingSkeleton />}>
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/menu" element={<MenuPage />} />
+                <Route path="/auth" element={<AuthPage />} />
+                <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/checkout" element={<CheckoutPage />} />
+                {showAdmin && (
+                  <Route path="/admin" element={<AdminLayout />}>
+                    <Route index element={<DashboardPage />} />
+                    <Route path="orders" element={<OrdersPage />} />
+                    <Route path="menu" element={<MenuManagementPage />} />
+                    <Route path="customers" element={<CustomersPage />} />
+                  </Route>
+                )}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
+          </BrowserRouter>
+        </CartProvider>
+      </AuthProvider>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
+
+export default App;
