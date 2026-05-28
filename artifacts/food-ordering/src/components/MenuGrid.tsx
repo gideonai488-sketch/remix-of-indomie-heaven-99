@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Star, Flame, ShoppingBag } from "lucide-react";
+import { Plus, Star, Flame, ShoppingBag, Zap } from "lucide-react";
 import { MenuItem } from "@/data/menu";
 import { useCart } from "@/context/CartContext";
 import { toast } from "sonner";
@@ -15,78 +15,69 @@ interface MenuCardProps {
 const MenuCard = ({ item, onSelect, onAdd, index }: MenuCardProps) => (
   <div
     onClick={onSelect}
-    className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border bg-card shadow-card transition-all duration-300 hover:-translate-y-1.5 hover:shadow-warm animate-fade-in"
-    style={{ animationDelay: `${index * 60}ms`, animationFillMode: "both" }}
+    className="group relative flex cursor-pointer flex-col overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-black/5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:ring-primary/20 animate-fade-in"
+    style={{ animationDelay: `${index * 50}ms`, animationFillMode: "both" }}
   >
     {/* Image */}
     <div className="relative aspect-[4/3] overflow-hidden">
       <img
         src={item.image}
         alt={item.name}
-        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         loading="lazy"
       />
-      {/* Gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-t from-foreground/70 via-foreground/10 to-transparent opacity-60 transition-opacity duration-300 group-hover:opacity-80" />
 
-      {/* Popular badge */}
-      {item.popular && (
-        <div className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-spicy-red/90 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-spicy-red-foreground backdrop-blur-sm">
-          <Flame className="h-3 w-3" />
-          Popular
-        </div>
-      )}
-
-      {/* Spice indicator */}
-      {item.spiceLevel > 0 && (
-        <div className="absolute right-2.5 top-2.5 rounded-full bg-foreground/50 px-2 py-0.5 text-xs backdrop-blur-sm">
-          {"🌶️".repeat(item.spiceLevel)}
-        </div>
-      )}
-
-      {/* Quick-add overlay — appears on hover */}
-      <div className="absolute inset-x-0 bottom-0 flex items-end justify-between p-3 translate-y-2 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
-        <span className="font-display text-xl font-extrabold text-primary-foreground drop-shadow-lg">
-          GH₵{item.price}
-        </span>
-        <button
-          onClick={onAdd}
-          className="flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow-warm transition-transform hover:scale-105 active:scale-95"
-          aria-label={`Add ${item.name} to cart`}
-        >
-          <Plus className="h-4 w-4" />
-          Add
-        </button>
+      {/* Top badges */}
+      <div className="absolute left-2.5 top-2.5 flex flex-col gap-1.5">
+        {item.popular && (
+          <span className="flex items-center gap-1 rounded-full bg-primary px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-warm">
+            <Flame className="h-2.5 w-2.5 fill-white" /> Hot
+          </span>
+        )}
+        {item.spiceLevel > 0 && (
+          <span className="rounded-full bg-black/50 px-2 py-0.5 text-[10px] backdrop-blur-sm">
+            {"🌶️".repeat(item.spiceLevel)}
+          </span>
+        )}
       </div>
     </div>
 
     {/* Content */}
-    <div className="p-3.5">
-      <div className="flex items-start justify-between gap-2">
-        <h4 className="font-display text-sm font-bold leading-tight text-card-foreground md:text-base">
+    <div className="flex flex-1 flex-col p-3.5">
+      <div className="flex-1">
+        <h4 className="truncate text-sm font-bold leading-tight text-foreground md:text-[15px]">
           {item.name}
         </h4>
-        <span className="shrink-0 rounded-md bg-primary/10 px-2 py-0.5 text-xs font-extrabold text-primary md:text-sm">
-          GH₵{item.price}
-        </span>
+        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground line-clamp-2">
+          {item.description}
+        </p>
       </div>
 
-      <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-        {item.description}
-      </p>
-
-      {/* Footer */}
-      <div className="mt-3 flex items-center gap-3 border-t border-border pt-2.5 text-[11px] text-muted-foreground">
-        <span className="flex items-center gap-0.5 font-semibold text-success">
+      {/* Meta row */}
+      <div className="mt-2.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+        <span className="flex items-center gap-0.5 font-semibold text-green-600">
           <Star className="h-3 w-3 fill-current" /> 4.9
         </span>
-        {item.spiceLevel === 0 && <span>Mild</span>}
         {item.orders && (
           <span className="ml-auto flex items-center gap-1 tabular-nums">
             <ShoppingBag className="h-3 w-3" />
             {item.orders.toLocaleString()}
           </span>
         )}
+      </div>
+
+      {/* Price + Add */}
+      <div className="mt-2.5 flex items-center justify-between border-t border-gray-100 pt-2.5">
+        <span className="font-display text-base font-extrabold text-foreground">
+          GH₵{item.price.toFixed(2)}
+        </span>
+        <button
+          onClick={onAdd}
+          className="flex items-center gap-1 rounded-xl bg-primary px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-transform hover:scale-105 active:scale-95"
+          aria-label={`Add ${item.name} to cart`}
+        >
+          <Plus className="h-3.5 w-3.5" /> Add
+        </button>
       </div>
     </div>
   </div>
@@ -105,18 +96,26 @@ const MenuGrid = ({ title, items, icon }: MenuGridProps) => {
   const handleAdd = (e: React.MouseEvent, item: MenuItem) => {
     e.stopPropagation();
     addItem(item);
-    toast.success(`${item.name} added to cart!`, { duration: 1500 });
+    toast.success(`${item.name} added!`, { duration: 1500 });
   };
 
   if (items.length === 0) return null;
 
   return (
-    <div className="mb-12">
+    <div className="mb-10">
       <div className="container mx-auto px-4">
-        <h3 className="mb-5 flex items-center gap-2 font-display text-xl font-bold text-foreground md:text-2xl">
-          {icon && <span className="text-2xl">{icon}</span>}
-          {title}
-        </h3>
+        {/* Section header */}
+        <div className="mb-5 flex items-center gap-3">
+          {icon && (
+            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-primary/10 text-lg">
+              {icon}
+            </div>
+          )}
+          <h3 className="font-display text-xl font-extrabold text-foreground md:text-2xl">
+            {title}
+          </h3>
+          <div className="ml-auto h-px flex-1 bg-gray-100" />
+        </div>
 
         <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
           {items.map((item, i) => (

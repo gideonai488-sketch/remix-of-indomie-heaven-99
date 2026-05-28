@@ -1,88 +1,144 @@
 import { useNavigate } from "react-router-dom";
 import { SERVICE_DEFS } from "@/types/services";
-import { ArrowLeft, ChevronRight, Clock, Shield, Star } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock, Shield, Star, Zap, Route } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 
 const perks = [
-  { icon: <Clock className="h-4 w-4" />, text: "30–60 min delivery" },
-  { icon: <Shield className="h-4 w-4" />, text: "Verified riders" },
-  { icon: <Star className="h-4 w-4" />, text: "Real-time tracking" },
+  { icon: Clock, text: "30–60 min" },
+  { icon: Shield, text: "Verified riders" },
+  { icon: Star, text: "Live tracking" },
 ];
+
+const subText: Record<string, string> = {
+  errand: "Shopping, queuing, bill payments & more",
+  parcel: "Documents, small items, gifts",
+  package: "Boxes, furniture pieces, fragile items",
+  pharmacy: "Prescriptions, OTC meds, health products",
+};
 
 const ServicesPage = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="flex min-h-screen flex-col bg-background pb-20">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-md">
+    <div className="flex min-h-screen flex-col bg-background pb-24">
+
+      {/* White sticky header */}
+      <header className="sticky top-0 z-50 border-b border-border bg-white shadow-sm">
         <div className="container mx-auto flex h-14 items-center gap-3 px-4">
           <button
             onClick={() => navigate(-1)}
-            className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="flex items-center gap-1 rounded-xl px-2 py-1.5 text-sm text-muted-foreground hover:bg-gray-100 hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
-          <h1 className="text-lg font-bold text-foreground">SpeedUp Services</h1>
+          <h1 className="text-lg font-extrabold text-foreground">SpeedUp Services</h1>
+          <div className="ml-auto flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10">
+            <Zap className="h-4 w-4 fill-primary text-primary" />
+          </div>
         </div>
       </header>
 
-      <div className="container mx-auto max-w-lg px-4 py-5 space-y-6">
+      <div className="container mx-auto max-w-lg px-4 py-5 space-y-5">
+
         {/* Hero banner */}
-        <div className="rounded-3xl bg-gradient-to-br from-primary via-primary to-accent/80 p-6 text-white shadow-warm">
-          <p className="text-xs font-semibold uppercase tracking-widest opacity-70">⚡ SpeedUp</p>
-          <h2 className="mt-1 font-display text-2xl font-black">We Handle It.<br/>You Relax.</h2>
-          <p className="mt-2 text-sm opacity-80">Errands, parcels, packages, pharmacy — all with live GPS tracking.</p>
-          <div className="mt-4 flex gap-4">
-            {perks.map((p, i) => (
-              <div key={i} className="flex items-center gap-1.5 text-xs opacity-90">
-                {p.icon} {p.text}
-              </div>
-            ))}
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-primary to-red-700 p-6 text-white shadow-warm">
+          {/* Background circles */}
+          <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10" />
+          <div className="absolute -bottom-6 -left-6 h-24 w-24 rounded-full bg-white/5" />
+
+          <div className="relative">
+            <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-white/90 backdrop-blur-sm">
+              <Zap className="h-3 w-3 fill-current" /> SpeedUp
+            </div>
+            <h2 className="font-display text-3xl font-black leading-tight">
+              We Handle It.<br />
+              <span className="text-white/80">You Relax.</span>
+            </h2>
+            <p className="mt-2 max-w-xs text-sm text-white/75">
+              Errands, parcels, packages, pharmacy — all with live GPS tracking.
+            </p>
+            <div className="mt-5 flex gap-3">
+              {perks.map((p, i) => (
+                <div key={i} className="flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-xs font-medium text-white/90 backdrop-blur-sm">
+                  <p.icon className="h-3.5 w-3.5" /> {p.text}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Pricing info */}
+        <div className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
+          <Route className="h-5 w-5 shrink-0 text-primary" />
+          <div>
+            <p className="text-sm font-bold text-foreground">Dynamic pricing</p>
+            <p className="text-[11px] text-muted-foreground">GH₵5 base + GH₵2.00/km + GH₵0.30/min · Min GH₵10</p>
           </div>
         </div>
 
         {/* Service cards */}
         <div className="space-y-3">
-          <h3 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">Choose a Service</h3>
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Choose a Service</p>
+
           {SERVICE_DEFS.map((svc) => (
             <button
               key={svc.type}
               onClick={() => navigate(`/service-request/${svc.type}`)}
-              className={`group flex w-full items-center gap-4 rounded-2xl border border-border p-4 text-left transition-all active:scale-[0.98] hover:border-primary/40 ${svc.color}`}
+              className="group flex w-full items-center gap-4 rounded-3xl bg-white p-4 text-left shadow-sm ring-1 ring-black/5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:ring-primary/20 active:scale-[0.98]"
             >
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-background/60 text-3xl">
+              {/* Icon */}
+              <div className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-3xl ${svc.color}`}>
                 {svc.icon}
               </div>
-              <div className="flex-1">
-                <p className={`text-base font-bold ${svc.accent}`}>{svc.label}</p>
-                <p className="text-xs text-muted-foreground">{svc.tagline}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground/70">
-                  {svc.type === 'errand' && 'Shopping, queuing, bill payments & more'}
-                  {svc.type === 'parcel' && 'Documents, small items, gifts'}
-                  {svc.type === 'package' && 'Boxes, furniture pieces, fragile items'}
-                  {svc.type === 'pharmacy' && 'Prescriptions, OTC meds, health products'}
-                </p>
+
+              {/* Text */}
+              <div className="flex-1 min-w-0">
+                <p className={`text-base font-extrabold ${svc.accent}`}>{svc.label}</p>
+                <p className="text-xs font-medium text-muted-foreground">{svc.tagline}</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground/70">{subText[svc.type]}</p>
               </div>
-              <ChevronRight className={`h-5 w-5 shrink-0 transition-transform group-hover:translate-x-1 ${svc.accent}`} />
+
+              {/* Arrow */}
+              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl transition-all group-hover:translate-x-0.5 ${svc.color}`}>
+                <ArrowRight className={`h-4 w-4 ${svc.accent}`} />
+              </div>
             </button>
+          ))}
+
+          {/* Food ordering */}
+          <button
+            onClick={() => navigate("/menu")}
+            className="group flex w-full items-center gap-4 rounded-3xl bg-white p-4 text-left shadow-sm ring-1 ring-black/5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:ring-primary/20 active:scale-[0.98]"
+          >
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-3xl">
+              🍜
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-base font-extrabold text-primary">Food Delivery</p>
+              <p className="text-xs font-medium text-muted-foreground">Order meals from our menu</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground/70">Bowls, sides, drinks & more</p>
+            </div>
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-primary/10 transition-all group-hover:translate-x-0.5">
+              <ArrowRight className="h-4 w-4 text-primary" />
+            </div>
+          </button>
+        </div>
+
+        {/* Trust badges */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { icon: "⚡", title: "Fast", sub: "30–60 min avg" },
+            { icon: "🛡️", title: "Safe", sub: "Verified riders" },
+            { icon: "📍", title: "Live", sub: "GPS tracking" },
+          ].map((b) => (
+            <div key={b.title} className="flex flex-col items-center rounded-2xl bg-white py-4 shadow-sm ring-1 ring-black/5 text-center">
+              <span className="text-2xl">{b.icon}</span>
+              <p className="mt-1.5 text-xs font-extrabold text-foreground">{b.title}</p>
+              <p className="text-[10px] text-muted-foreground">{b.sub}</p>
+            </div>
           ))}
         </div>
 
-        {/* Food ordering CTA */}
-        <button
-          onClick={() => navigate("/menu")}
-          className="flex w-full items-center gap-4 rounded-2xl border border-border bg-primary/10 p-4 text-left transition-all hover:border-primary/40 active:scale-[0.98]"
-        >
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-background/60 text-3xl">
-            🍜
-          </div>
-          <div className="flex-1">
-            <p className="text-base font-bold text-primary">Food Delivery</p>
-            <p className="text-xs text-muted-foreground">Order meals from our menu</p>
-          </div>
-          <ChevronRight className="h-5 w-5 shrink-0 text-primary" />
-        </button>
       </div>
 
       <BottomNav />

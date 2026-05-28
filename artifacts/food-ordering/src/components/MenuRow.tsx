@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus, Star, Flame } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Star, Flame, ShoppingBag } from "lucide-react";
 import { MenuItem } from "@/data/menu";
 import { useCart } from "@/context/CartContext";
 import { toast } from "sonner";
@@ -22,7 +22,7 @@ const MenuCard = ({
 }) => (
   <div
     onClick={onSelect}
-    className="group/card relative min-w-[220px] max-w-[260px] flex-shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-border bg-card shadow-card transition-all duration-300 hover:-translate-y-1 hover:shadow-warm md:min-w-[260px] md:max-w-[300px]"
+    className="group/card relative flex min-w-[200px] max-w-[220px] flex-shrink-0 cursor-pointer flex-col overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-black/5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:ring-primary/20 md:min-w-[240px] md:max-w-[260px]"
   >
     {/* Image */}
     <div className="relative aspect-[4/3] overflow-hidden">
@@ -32,45 +32,28 @@ const MenuCard = ({
         className="h-full w-full object-cover transition-transform duration-500 group-hover/card:scale-105"
         loading="lazy"
       />
-      {/* Gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-t from-foreground/60 via-transparent to-transparent" />
-
-      {/* Popular badge */}
       {item.popular && (
-        <div className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-spicy-red/90 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-spicy-red-foreground backdrop-blur-sm">
-          <Flame className="h-3 w-3" />
-          Popular
-        </div>
+        <span className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-primary px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-warm">
+          <Flame className="h-2.5 w-2.5 fill-white" /> Hot
+        </span>
       )}
-
-      {/* Quick-add floating button */}
-      <button
-        onClick={onAdd}
-        className="absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-warm opacity-0 transition-all duration-300 hover:scale-110 active:scale-95 group-hover/card:opacity-100"
-        aria-label={`Add ${item.name} to cart`}
-      >
-        <Plus className="h-5 w-5" />
-      </button>
     </div>
 
     {/* Content */}
-    <div className="p-3.5">
-      <div className="flex items-start justify-between gap-2">
-        <h4 className="font-display text-base font-bold leading-tight text-card-foreground truncate">
-          {item.name}
-        </h4>
-        <span className="shrink-0 font-display text-base font-extrabold text-primary">
-          GH₵{item.price}
-        </span>
+    <div className="flex flex-1 flex-col p-3.5">
+      <div className="flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <h4 className="truncate text-sm font-bold leading-tight text-foreground md:text-base">
+            {item.name}
+          </h4>
+        </div>
+        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground line-clamp-2">
+          {item.description}
+        </p>
       </div>
 
-      <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-        {item.description}
-      </p>
-
-      {/* Footer meta */}
-      <div className="mt-3 flex items-center gap-3 text-[11px] text-muted-foreground">
-        <span className="flex items-center gap-0.5 font-semibold text-success">
+      <div className="mt-2.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+        <span className="flex items-center gap-0.5 font-semibold text-green-600">
           <Star className="h-3 w-3 fill-current" /> 4.9
         </span>
         <span>{"🌶️".repeat(item.spiceLevel) || "Mild"}</span>
@@ -79,6 +62,19 @@ const MenuCard = ({
             {item.orders.toLocaleString()} sold
           </span>
         )}
+      </div>
+
+      <div className="mt-2.5 flex items-center justify-between border-t border-gray-100 pt-2.5">
+        <span className="font-display text-base font-extrabold text-foreground">
+          GH₵{item.price.toFixed(2)}
+        </span>
+        <button
+          onClick={onAdd}
+          className="flex items-center gap-1 rounded-xl bg-primary px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-transform hover:scale-105 active:scale-95"
+          aria-label={`Add ${item.name}`}
+        >
+          <Plus className="h-3.5 w-3.5" /> Add
+        </button>
       </div>
     </div>
   </div>
@@ -91,15 +87,14 @@ const MenuRow = ({ title, items, icon }: MenuRowProps) => {
 
   const scroll = (dir: "left" | "right") => {
     if (scrollRef.current) {
-      const amount = dir === "left" ? -400 : 400;
-      scrollRef.current.scrollBy({ left: amount, behavior: "smooth" });
+      scrollRef.current.scrollBy({ left: dir === "left" ? -400 : 400, behavior: "smooth" });
     }
   };
 
   const handleAdd = (e: React.MouseEvent, item: MenuItem) => {
     e.stopPropagation();
     addItem(item);
-    toast.success(`${item.name} added to cart!`, { duration: 1500 });
+    toast.success(`${item.name} added!`, { duration: 1500 });
   };
 
   if (items.length === 0) return null;
@@ -107,29 +102,38 @@ const MenuRow = ({ title, items, icon }: MenuRowProps) => {
   return (
     <div className="mb-10">
       <div className="container mx-auto px-4">
-        <h3 className="mb-4 flex items-center gap-2 font-display text-xl font-bold text-foreground md:text-2xl">
-          {icon && <span className="text-2xl">{icon}</span>}
-          {title}
-        </h3>
+        <div className="mb-5 flex items-center gap-3">
+          {icon && (
+            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-primary/10 text-lg">
+              {icon}
+            </div>
+          )}
+          <h3 className="font-display text-xl font-extrabold text-foreground md:text-2xl">{title}</h3>
+          <div className="ml-auto h-px flex-1 bg-gray-100" />
+        </div>
       </div>
 
       <div className="group relative">
         <button
           onClick={() => scroll("left")}
-          className="absolute left-0 top-0 z-20 hidden h-full w-12 items-center justify-center bg-gradient-to-r from-background to-transparent opacity-0 transition-opacity group-hover:opacity-100 md:flex"
+          className="absolute left-1 top-0 z-20 hidden h-full w-10 items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 md:flex"
         >
-          <ChevronLeft className="h-8 w-8 text-foreground" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-md ring-1 ring-black/10">
+            <ChevronLeft className="h-5 w-5 text-foreground" />
+          </div>
         </button>
         <button
           onClick={() => scroll("right")}
-          className="absolute right-0 top-0 z-20 hidden h-full w-12 items-center justify-center bg-gradient-to-l from-background to-transparent opacity-0 transition-opacity group-hover:opacity-100 md:flex"
+          className="absolute right-1 top-0 z-20 hidden h-full w-10 items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 md:flex"
         >
-          <ChevronRight className="h-8 w-8 text-foreground" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-md ring-1 ring-black/10">
+            <ChevronRight className="h-5 w-5 text-foreground" />
+          </div>
         </button>
 
         <div
           ref={scrollRef}
-          className="flex gap-4 overflow-x-auto px-4 pb-4 scrollbar-hide md:container md:mx-auto"
+          className="flex gap-3 overflow-x-auto px-4 pb-2 scrollbar-hide md:container md:mx-auto"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
           {items.map((item) => (
