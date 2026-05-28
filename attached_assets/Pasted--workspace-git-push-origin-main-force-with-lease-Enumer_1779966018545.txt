@@ -1,0 +1,38 @@
+~/workspace$ git push origin main --force-with-lease
+Enumerating objects: 156, done.
+Counting objects: 100% (156/156), done.
+Delta compression using up to 4 threads
+Compressing objects: 100% (141/141), done.
+Writing objects: 100% (141/141), 84.97 KiB | 7.72 MiB/s, done.
+Total 141 (delta 109), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (109/109), completed with 12 local objects.
+remote: error: GH013: Repository rule violations found for refs/heads/main.
+remote: 
+remote: - GITHUB PUSH PROTECTION
+remote:   —————————————————————————————————————————
+remote:     Resolve the following violations before pushing again
+remote: 
+remote:     - Push cannot contain secrets
+remote: 
+remote:     
+remote:      (?) Learn how to resolve a blocked push
+remote:      https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line#resolving-a-blocked-push
+remote:     
+remote:      (?) This repository does not have Secret Scanning enabled, but is eligible. Enable Secret Scanning to view and manage detected secrets.
+remote:      Visit the repository settings page, https://github.com/gideonai488-sketch/remix-of-indomie-heaven-99/settings/security_analysis
+remote:     
+remote:     
+remote:       —— Mapbox Secret Access Token ————————————————————————
+remote:        locations:
+remote:          - commit: b75bf976d396a68bc944bd1473e34f2f78648586
+remote:            path: .replit:28
+remote:     
+remote:        (?) To push, remove secret from commit(s) or follow this URL to allow the secret.
+remote:        https://github.com/gideonai488-sketch/remix-of-indomie-heaven-99/security/secret-scanning/unblock-secret/3ELkvtz2AJ9aV29JkyUdsYpd21Q
+remote:     
+remote: 
+remote: 
+To https://github.com/gideonai488-sketch/remix-of-indomie-heaven-99
+ ! [remote rejected] main -> main (push declined due to repository rule violations)
+error: failed to push some refs to 'https://github.com/gideonai488-sketch/remix-of-indomie-heaven-99'
+~/workspace$  
