@@ -24,6 +24,7 @@ const PromoBanner = () => {
   const navigate = useNavigate();
   const [slides, setSlides] = useState<BannerSlide[]>([]);
   const [current, setCurrent] = useState(0);
+  const [brokenIndices, setBrokenIndices] = useState<Set<number>>(new Set());
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // Fetch from promo_banners table on mount, fallback to storage direct
@@ -102,21 +103,47 @@ const PromoBanner = () => {
     load();
   }, []);
 
-  const go = (dir: number) => setCurrent((p) => (p + dir + slides.length) % Math.max(slides.length, 1));
+  // Skip broken videos when navigating
+  const getNextValid = (start: number, dir: number) => {
+    if (slides.length === 0) return 0;
+    let idx = start;
+    let attempts = 0;
+    while (brokenIndices.has(idx) && attempts < slides.length) {
+      idx = (idx + dir + slides.length) % slides.length;
+      attempts++;
+    }
+    return idx;
+  };
 
-  // Auto-rotate every 5.5s
+  const go = (dir: number) => setCurrent((p) => getNextValid(p + dir, dir));
+
+  // Auto-rotate every 5.5s — skip broken videos
   useEffect(() => {
     if (slides.length === 0) return;
-    const t = setInterval(() => setCurrent((p) => (p + 1) % slides.length), 5500);
+    const t = setInterval(() => {
+      setCurrent((p) => getNextValid(p + 1, 1));
+    }, 5500);
     return () => clearInterval(t);
-  }, [slides.length]);
+  }, [slides.length, brokenIndices.size]);
 
   // Play current video
   useEffect(() => {
     if (videoRef.current) {
+      videoRef.current.currentTime = 0;
       videoRef.current.play().catch(() => {});
     }
   }, [current]);
+
+  const handleVideoError = (index: number) => {
+    console.warn("[PromoBanner] Video failed to load, marking as broken:", index);
+    setBrokenIndices((prev) => {
+      const next = new Set(prev);
+      next.add(index);
+      return next;
+    });
+    // Auto-skip to next valid slide if this one is currently showing
+    setCurrent((p) => (p === index ? getNextValid(index + 1, 1) : p));
+  };
 
   if (slides.length === 0) return null;
 
@@ -137,6 +164,7 @@ const PromoBanner = () => {
               loop
               playsInline
               muted={false}
+              onError={() => handleVideoError(current)}
             />
           ) : (
             <img src={slide.src} alt={slide.title} className="h-full w-full object-cover" />
