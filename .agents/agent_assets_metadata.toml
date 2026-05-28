@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "jMf5Xu1Bq39HsGhXNu4Wy"
+uri = "file://.local/speedup-ios-agent-prompt.md"
+type = "text"
+title = "SpeedUp iOS Agent Prompt"
