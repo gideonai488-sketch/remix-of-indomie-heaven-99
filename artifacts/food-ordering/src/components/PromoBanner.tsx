@@ -31,24 +31,46 @@ const PromoBanner = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const { data: files, error } = await supabase.storage.from("promo videos").list("", { limit: 20 });
-        if (error || !files || files.length === 0) {
+        const bucketName = "promo-videos";
+        const { data: files, error } = await supabase.storage.from(bucketName).list("", { limit: 20 });
+        if (error) {
+          console.warn("[PromoBanner] storage list error:", error.message);
           setSlides(fallbackVideos);
           return;
         }
-        // Only videos / images
-        const mediaFiles = files.filter((f) => {
+
+        // Gather all media files (root + any subfolders)
+        let allMedia: { name: string; path: string }[] = [];
+
+        // Check root files
+        const rootFiles = (files || []).filter((f) => {
           const name = f.name.toLowerCase();
-          return name.endsWith(".mp4") || name.endsWith(".webm") || name.endsWith(".mov") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg");
+          return !name.startsWith(".") && (name.endsWith(".mp4") || name.endsWith(".webm") || name.endsWith(".mov") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg"));
         });
-        if (mediaFiles.length === 0) {
+        allMedia.push(...rootFiles.map((f) => ({ name: f.name, path: f.name })));
+
+        // Check subfolders (folders show as "folders" in the list response)
+        const folders = (files || []).filter((f) => f.id === null && !f.name.startsWith("."));
+        for (const folder of folders) {
+          const { data: subFiles } = await supabase.storage.from(bucketName).list(folder.name, { limit: 20 });
+          const subMedia = (subFiles || []).filter((f) => {
+            const name = f.name.toLowerCase();
+            return name.endsWith(".mp4") || name.endsWith(".webm") || name.endsWith(".mov") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg");
+          });
+          allMedia.push(...subMedia.map((f) => ({ name: f.name, path: `${folder.name}/${f.name}` })));
+        }
+
+        if (allMedia.length === 0) {
+          console.warn(`[PromoBanner] bucket '${bucketName}' is empty or private. To fix: Supabase Dashboard -> Storage -> Buckets -> '${bucketName}' -> Configuration -> Set to Public, or add RLS policy for anon SELECT.`);
           setSlides(fallbackVideos);
           return;
         }
-        const mapped: BannerSlide[] = mediaFiles.map((f) => {
-          const { data } = supabase.storage.from("promo videos").getPublicUrl(f.name);
-          // Try to parse a friendly label from filename: "my-banner_hello world.mp4" -> "Hello World"
-          const base = f.name.split(".")[0].replace(/[_-]/g, " ");
+
+        console.log("[PromoBanner] media files found:", allMedia.length, allMedia.map((m) => m.path));
+
+        const mapped: BannerSlide[] = allMedia.map((m) => {
+          const { data } = supabase.storage.from(bucketName).getPublicUrl(m.path);
+          const base = m.name.split(".")[0].replace(/[_-]/g, " ");
           const label = base.replace(/\b\w/g, (c) => c.toUpperCase());
           return {
             src: data.publicUrl,
@@ -57,8 +79,10 @@ const PromoBanner = () => {
             cta: "Order Now",
           };
         });
+        console.log("[PromoBanner] loaded slides:", mapped.map((s) => s.src));
         setSlides(mapped);
-      } catch {
+      } catch (err: any) {
+        console.error("[PromoBanner] unexpected error:", err?.message || err);
         setSlides(fallbackVideos);
       }
     };
