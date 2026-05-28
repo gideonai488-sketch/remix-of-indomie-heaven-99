@@ -84,26 +84,13 @@ workflows:
 
       - name: Set versionCode and versionName
         script: |
-          # Offset by 10 — build #1 → versionCode 11, build #2 → 12, etc.
           BUILD_NUM=$(( ${CM_BUILD_NUMBER:-1} + 10 ))
           VERSION="1.0.${BUILD_NUM}"
           GRADLE="artifacts/food-ordering/android/app/build.gradle"
-
-          echo "=== BEFORE ===" && grep -n "versionCode\|versionName" "$GRADLE"
-
-          export _GRADLE="$GRADLE" _VC="$BUILD_NUM" _VN="$VERSION"
-          python3 -c "
-import re, os
-path = os.environ['_GRADLE']
-vc   = os.environ['_VC']
-vn   = os.environ['_VN']
-src  = open(path).read()
-src  = re.sub(r'(versionCode\s+)\S+',         'versionCode '  + vc,       src)
-src  = re.sub(r'(versionName\s+\")[^\"]+\"',  'versionName \"' + vn + '\"', src)
-open(path, 'w').write(src)
-print('versionCode =>', vc, '  versionName =>', vn)
-"
-          echo "=== AFTER ===" && grep -n "versionCode\|versionName" "$GRADLE"
+          echo "BEFORE:" && grep -n "versionCode\|versionName" "$GRADLE"
+          export _G="$GRADLE" _VC="$BUILD_NUM" _VN="$VERSION"
+          python3 -c 'import re,os; p=os.environ["_G"]; vc=os.environ["_VC"]; vn=os.environ["_VN"]; s=open(p).read(); s=re.sub(r"(versionCode\s+)\S+","versionCode "+vc,s); s=re.sub(r"(versionName\s+\")[^\"]+\"","versionName \""+vn+"\"",s); open(p,"w").write(s); print("versionCode =>",vc," versionName =>",vn)'
+          echo "AFTER:" && grep -n "versionCode\|versionName" "$GRADLE"
 
       - name: Decode keystore
         script: |
