@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Zap } from "lucide-react";
+import { ChevronLeft, ChevronRight, Zap, Volume2, VolumeOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 // Fallback videos baked into the app (used when Supabase storage is empty / unreachable)
@@ -25,6 +25,7 @@ const PromoBanner = () => {
   const navigate = useNavigate();
   const [slides, setSlides] = useState<BannerSlide[]>([]);
   const [current, setCurrent] = useState(0);
+  const [muted, setMuted] = useState(true);
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
 
   // Fetch from Supabase Storage bucket "promo videos" on mount
@@ -97,6 +98,13 @@ const PromoBanner = () => {
     return () => clearInterval(t);
   }, [slides.length]);
 
+  // Sync muted state across all video refs
+  useEffect(() => {
+    videoRefs.current.forEach((v) => {
+      if (v) v.muted = muted;
+    });
+  }, [muted]);
+
   if (slides.length === 0) return null;
 
   return (
@@ -121,7 +129,6 @@ const PromoBanner = () => {
                   className="h-full w-full object-cover"
                   autoPlay
                   loop
-                  muted
                   playsInline
                 />
               ) : (
@@ -164,17 +171,33 @@ const PromoBanner = () => {
           <ChevronRight className="h-4 w-4 text-white" />
         </button>
 
-        {/* Dots */}
-        <div className="absolute bottom-4 right-5 flex gap-1.5">
-          {slides.map((_, i) => (
+        {/* Mute toggle + Dots */}
+        <div className="absolute bottom-4 right-5 flex items-center gap-2">
+          {/* Mute toggle (only for video slides) */}
+          {slides[current]?.src.match(/\.(mp4|webm|mov)(\?.*)?$/i) && (
             <button
-              key={i}
-              onClick={(e) => { e.stopPropagation(); setCurrent(i); }}
-              className={`h-1.5 rounded-full transition-all ${
-                i === current ? "w-6 bg-white" : "w-1.5 bg-white/40"
-              }`}
-            />
-          ))}
+              onClick={(e) => { e.stopPropagation(); setMuted((m) => !m); }}
+              className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm transition-all hover:bg-white/30"
+              aria-label={muted ? "Unmute video" : "Mute video"}
+            >
+              {muted ? (
+                <VolumeOff className="h-3 w-3 text-white" />
+              ) : (
+                <Volume2 className="h-3 w-3 text-white" />
+              )}
+            </button>
+          )}
+          <div className="flex gap-1.5">
+            {slides.map((_, i) => (
+              <button
+                key={i}
+                onClick={(e) => { e.stopPropagation(); setCurrent(i); }}
+                className={`h-1.5 rounded-full transition-all ${
+                  i === current ? "w-6 bg-white" : "w-1.5 bg-white/40"
+                }`}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </section>
