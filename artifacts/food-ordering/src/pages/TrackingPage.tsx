@@ -404,21 +404,8 @@ const SearchingRider = () => (
   </div>
 );
 
-// -------- Paystack iframe --------
-const PaystackFrame = ({ url, onClose }: { url: string; onClose: () => void }) => (
-  <div className="fixed inset-0 z-[200] flex flex-col bg-white">
-    <div className="flex items-center justify-between border-b border-border px-4 py-3">
-      <p className="font-bold text-foreground">Complete Payment</p>
-      <button onClick={onClose} className="rounded-full p-1.5 text-muted-foreground hover:bg-muted">
-        <X className="h-5 w-5"/>
-      </button>
-    </div>
-    <iframe src={url} className="flex-1 w-full border-0" title="Paystack Payment"/>
-    <p className="py-2 text-center text-[10px] text-muted-foreground">
-      Secured by Paystack · Do not close until payment completes
-    </p>
-  </div>
-);
+// Paystack public key (pk.* — safe to use in browser)
+const PAYSTACK_KEY = "pk_live_671fccd651daf066804466572cfd0b7c47df2471";
 
 // -------- Payment Modal --------
 const PaymentModal = ({ order, onClose }: { order: TrackOrder; onClose: () => void }) => {
@@ -426,34 +413,53 @@ const PaymentModal = ({ order, onClose }: { order: TrackOrder; onClose: () => vo
   const isService = !!parsedNotes?.service_type;
   const subtotal = (order.order_items || []).reduce((s, i) => s + i.price * i.quantity, 0) || order.total_amount - (order.delivery_fee || 0);
   const deliveryFee = order.delivery_fee || 0;
-  const platformCut = +(deliveryFee * 0.2).toFixed(2);   // 20% admin
-  const riderShare  = +(deliveryFee * 0.8).toFixed(2);   // 80% rider
+  const platformCut = +(deliveryFee * 0.2).toFixed(2);
+  const riderShare  = +(deliveryFee * 0.8).toFixed(2);
   const total = order.total_amount;
 
   const [loading, setLoading] = useState(false);
-  const [paystackUrl, setPaystackUrl] = useState<string | null>(null);
   const [rating, setRating] = useState(0);
+  const [userEmail, setUserEmail] = useState("customer@speedup.app");
 
-  const handlePayNow = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("initialize-payment", {
-        body: {
-          order_id: order.id,
-          order_type: isService ? "service" : "food",
-          rider_id: order.rider_id || undefined,
-          callback_url: `${window.location.origin}/track/${order.id}?type=${isService ? "service" : "food"}&paid=1`,
-        },
-      });
-      if (error || !data?.authorization_url) throw new Error(error?.message || "Payment init failed");
-      setPaystackUrl(data.authorization_url);
-    } catch (e: any) {
-      toast.error(e.message || "Could not start payment");
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      const email = data.session?.user?.email;
+      if (email) setUserEmail(email);
+    });
+  }, []);
+
+  const handlePayNow = () => {
+    const PaystackPop = (window as any).PaystackPop;
+    if (!PaystackPop) {
+      toast.error("Payment script not loaded — check your connection and try again.");
+      return;
     }
-    setLoading(false);
+    setLoading(true);
+    const handler = PaystackPop.setup({
+      key: PAYSTACK_KEY,
+      email: userEmail,
+      amount: Math.round(total * 100), // GHS → pesewas
+      currency: "GHS",
+      ref: `speedup_${order.id}_${Date.now()}`,
+      metadata: {
+        order_id: order.id,
+        order_type: isService ? "service" : "food",
+        rider_id: order.rider_id || "",
+      },
+      callback: async (response: { reference: string }) => {
+        await supabase.from("orders")
+          .update({ payment_status: "paid", notes: (order.notes || "") + `|payref=${response.reference}` })
+          .eq("id", order.id);
+        toast.success("Payment successful! 🎉");
+        setLoading(false);
+        onClose();
+      },
+      onClose: () => {
+        setLoading(false);
+      },
+    });
+    handler.openIframe();
   };
-
-  if (paystackUrl) return <PaystackFrame url={paystackUrl} onClose={() => setPaystackUrl(null)}/>;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
