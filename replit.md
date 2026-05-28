@@ -1,6 +1,6 @@
 # SpeedUp
 
-DoorDash-like platform for Ghana: food ordering + services (Errands, Parcel, Package, Pharmacy) with live GPS tracking, rider matching, and mobile money payments.
+Global delivery & services platform (a Genesis Holdings Inc, USA product): food ordering + services (Errands, Parcel, Package, Pharmacy) with live GPS tracking, rider matching, and mobile money payments.
 
 ## Run & Operate
 

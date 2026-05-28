@@ -19,7 +19,7 @@ const slides = [
     ),
     eyebrow: "WELCOME",
     title: "SpeedUp",
-    subtitle: "Ghana's fastest delivery & services app. Food, errands, parcels — we handle it all.",
+    subtitle: "The fastest delivery & services app — food, errands, parcels and more, wherever you are.",
   },
   {
     id: "food",
