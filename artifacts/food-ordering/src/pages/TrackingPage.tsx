@@ -163,24 +163,33 @@ const MapView = ({
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    const map = new mapboxgl.Map({
-      container: containerRef.current,
-      style: "mapbox://styles/mapbox/streets-v12",
-      center: ACCRA,
-      zoom: 13,
-      attributionControl: false,
-    });
+    let map: mapboxgl.Map;
+    try {
+      map = new mapboxgl.Map({
+        container: containerRef.current,
+        style: "mapbox://styles/mapbox/streets-v12",
+        center: ACCRA,
+        zoom: 13,
+        attributionControl: false,
+      });
+    } catch {
+      return; // WebGL not available — silently skip map
+    }
     mapRef.current = map;
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
 
     map.on("load", async () => {
       // Geocode addresses (fallback to Accra offsets)
-      const pickup = (await geocode(pickupAddress)) ?? [ACCRA[0] - 0.02, ACCRA[1] - 0.01] as [number, number];
-      const delivery = (await geocode(deliveryAddress)) ?? [ACCRA[0] + 0.025, ACCRA[1] + 0.018] as [number, number];
+      let pickup = (await geocode(pickupAddress)) ?? [ACCRA[0] - 0.02, ACCRA[1] - 0.01] as [number, number];
+      let delivery = (await geocode(deliveryAddress)) ?? [ACCRA[0] + 0.025, ACCRA[1] + 0.018] as [number, number];
+
+      // Guard against NaN — hard fallback to known Accra coords
+      if (!isFinite(pickup[0]) || !isFinite(pickup[1])) pickup = [ACCRA[0] - 0.02, ACCRA[1] - 0.01];
+      if (!isFinite(delivery[0]) || !isFinite(delivery[1])) delivery = [ACCRA[0] + 0.025, ACCRA[1] + 0.018];
 
       const route = await getRoute(pickup, delivery);
-      routeCoordsRef.current = route;
+      routeCoordsRef.current = route.filter(([x,y]) => isFinite(x) && isFinite(y));
 
       // Route line
       map.addSource("route", {
