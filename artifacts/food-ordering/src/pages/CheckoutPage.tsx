@@ -109,7 +109,7 @@ const CheckoutPage = () => {
         unit_price: ci.item.price,
         price: ci.item.price,
       }));
-      const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
+      const { error: itemsErr } = await (supabase as any).from("order_items").insert(orderItems);
       if (itemsErr) throw itemsErr;
 
       // 3. Dispatch rider — finds nearest verified rider
