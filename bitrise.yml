@@ -1,0 +1,126 @@
+format_version: "13"
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  SpeedUp iOS — TestFlight Distribution
+#
+#  Prerequisites (one-time setup in Bitrise UI):
+#    1. Code Signing → upload Distribution .p12 certificate
+#    2. Code Signing → upload App Store provisioning profile
+#    3. Code Signing → add App Store Connect API key
+#    4. Set BITRISE_APPLE_TEAM_ID secret (your 10-char Apple Team ID)
+#
+#  Trigger: push to main  OR  manual run from Bitrise dashboard
+# ─────────────────────────────────────────────────────────────────────────────
+
+app:
+  envs:
+    - BITRISE_PROJECT_PATH: artifacts/food-ordering/ios/App/App.xcworkspace
+    - BITRISE_SCHEME: App
+    - BITRISE_DISTRIBUTION_METHOD: app-store
+    - NODE_VERSION: "22"
+    - VITE_SUPABASE_URL: "https://cgadnsuyezixjdrjkbvb.supabase.co"
+    - VITE_SUPABASE_PUBLISHABLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNnYWRuc3V5ZXppeGpkcmprYnZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4MjI0OTgsImV4cCI6MjA5NTM5ODQ5OH0.kePPhpHopt1Ks5MjnjTQLyAPXwsGnAVGx8Xv2HMBuGY"
+    - VITE_SUPABASE_PROJECT_ID: "cgadnsuyezixjdrjkbvb"
+
+trigger_map:
+  - push_branch: main
+    workflow: deploy-testflight
+
+workflows:
+
+  # ── Shared setup (reused by both workflows) ──────────────────────────────
+  _setup:
+    steps:
+      - activate-ssh-key@4: {}
+
+      - git-clone@8: {}
+
+      - script@1:
+          title: Install pnpm
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -euo pipefail
+                npm install -g pnpm@latest --force
+
+      - script@1:
+          title: Install Node dependencies
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -euo pipefail
+                pnpm install
+
+      - script@1:
+          title: Build web assets (Capacitor)
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -euo pipefail
+                export BASE_PATH="/"
+                export PORT="3000"
+                export NODE_ENV="production"
+                pnpm --filter @workspace/food-ordering run build:cap
+
+      - script@1:
+          title: Capacitor sync → iOS
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -euo pipefail
+                cd artifacts/food-ordering
+                npx cap sync ios
+
+      - cocoapods-install@2:
+          inputs:
+            - podfile_path: artifacts/food-ordering/ios/App/Podfile
+            - verbose: "false"
+
+  # ── Deploy to TestFlight ─────────────────────────────────────────────────
+  deploy-testflight:
+    before_run:
+      - _setup
+    steps:
+
+      # Bump build number — every upload to App Store Connect needs a unique number
+      - set-xcode-build-number@1:
+          inputs:
+            - plist_path: artifacts/food-ordering/ios/App/App/Info.plist
+            - build_short_version_string: "1.0"
+            - build_version: $BITRISE_BUILD_NUMBER
+
+      # Archive IPA with app-store distribution method
+      - xcode-archive@5:
+          inputs:
+            - project_path: $BITRISE_PROJECT_PATH
+            - scheme: $BITRISE_SCHEME
+            - distribution_method: $BITRISE_DISTRIBUTION_METHOD
+            - automatic_code_signing: api-key
+            - configuration: Release
+            - output_tool: xcpretty
+
+      # Upload IPA to App Store Connect → TestFlight
+      - deploy-to-itunesconnect-application-loader@1:
+          inputs:
+            - connection: api_key
+            - itunescon_user: ""
+            - password: ""
+
+      # Save IPA as downloadable artifact on Bitrise build page
+      - deploy-to-bitrise-io@2:
+          inputs:
+            - is_enable_public_page: "false"
+
+  # ── PR / CI check — build for simulator only, no upload ─────────────────
+  primary:
+    before_run:
+      - _setup
+    steps:
+      - xcode-build-for-simulator@0:
+          inputs:
+            - project_path: $BITRISE_PROJECT_PATH
+            - scheme: $BITRISE_SCHEME
+            - simulator_device: iPhone 15
+
+      - deploy-to-bitrise-io@2: {}
