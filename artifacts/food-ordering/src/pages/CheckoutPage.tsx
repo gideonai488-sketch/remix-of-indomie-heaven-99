@@ -7,46 +7,26 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, MapPin, Loader2, Phone, User,
-  ShoppingBag, StickyNote, ChevronRight, Plus, CreditCard, Banknote, CheckCircle2, X,
+  ShoppingBag, StickyNote, ChevronRight, Plus,
+  Banknote, Smartphone, CheckCircle2,
 } from "lucide-react";
 
 const SectionCard = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
-  <div className={`rounded-2xl border border-border bg-card p-5 shadow-card ${className}`}>{children}</div>
+  <div className={`rounded-2xl border border-border bg-card p-5 shadow-sm ${className}`}>{children}</div>
 );
 const SectionTitle = ({ icon: Icon, children }: { icon: React.ElementType; children: React.ReactNode }) => (
   <h3 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-muted-foreground">
-    <Icon className="h-4 w-4 text-primary" />
-    {children}
+    <Icon className="h-4 w-4 text-primary" /> {children}
   </h3>
 );
 
-type PaymentMethod = "paystack" | "cash_on_delivery";
+type PayOnDelivery = "cash" | "momo";
 
-// Paystack inline checkout modal
-const PaystackModal = ({
-  authorizationUrl,
-  onClose,
-}: {
-  authorizationUrl: string;
-  onClose: () => void;
-}) => (
-  <div className="fixed inset-0 z-[100] flex flex-col bg-white">
-    <div className="flex items-center justify-between border-b border-border px-4 py-3">
-      <p className="font-bold text-foreground">Complete Payment</p>
-      <button onClick={onClose} className="rounded-full p-1.5 text-muted-foreground hover:bg-muted">
-        <X className="h-5 w-5" />
-      </button>
-    </div>
-    <iframe
-      src={authorizationUrl}
-      className="flex-1 w-full border-0"
-      title="Paystack Payment"
-    />
-    <p className="py-2 text-center text-[10px] text-muted-foreground">
-      Secured by Paystack · Do not close until payment completes
-    </p>
-  </div>
-);
+const MOMO_NETWORKS = [
+  { id: "mtn", label: "MTN MoMo", color: "bg-yellow-400" },
+  { id: "vodafone", label: "Vodafone Cash", color: "bg-red-500" },
+  { id: "airteltigo", label: "AirtelTigo Money", color: "bg-red-700" },
+];
 
 const CheckoutPage = () => {
   const { user } = useAuth();
@@ -59,29 +39,27 @@ const CheckoutPage = () => {
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("paystack");
-  const [paystackUrl, setPaystackUrl] = useState<string | null>(null);
-  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
 
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
 
-  const deliveryFee = 10;
+  // Payment on delivery
+  const [payOnDelivery, setPayOnDelivery] = useState<PayOnDelivery>("cash");
+  const [momoPhone, setMomoPhone] = useState("");
+  const [momoNetwork, setMomoNetwork] = useState("mtn");
+
+  // Delivery fee — fetched from backend config or default
+  const [deliveryFee, setDeliveryFee] = useState(10);
   const finalTotal = totalPrice + deliveryFee;
 
-  useEffect(() => {
-    if (!user) navigate("/auth", { replace: true });
-  }, [user, navigate]);
-
-  useEffect(() => {
-    if (user && items.length === 0) navigate("/", { replace: true });
-  }, [user, items.length, navigate]);
+  useEffect(() => { if (!user) navigate("/auth", { replace: true }); }, [user, navigate]);
+  useEffect(() => { if (user && items.length === 0) navigate("/", { replace: true }); }, [user, items.length, navigate]);
 
   useEffect(() => {
     if (!user || dataLoaded) return;
     const load = async () => {
       const [addrRes, profileRes] = await Promise.all([
-        supabase.from("delivery_addresses").select("*").eq("user_id", user.id).order("is_default", { ascending: false }),
+        supabase.from("delivery_addresses").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
         supabase.from("profiles").select("*").eq("user_id", user.id).single(),
       ]);
       const addrs = addrRes.data || [];
@@ -90,149 +68,87 @@ const CheckoutPage = () => {
       if (profileRes.data) {
         setCustomerName(profileRes.data.name || "");
         setCustomerPhone(profileRes.data.phone || "");
+        if (profileRes.data.phone) setMomoPhone(profileRes.data.phone);
       }
       setDataLoaded(true);
     };
     load();
   }, [user, dataLoaded]);
 
-  // Watch for Paystack payment confirmation via realtime
-  useEffect(() => {
-    if (!pendingOrderId) return;
-    const ch = supabase.channel(`payment-watch-${pendingOrderId}`)
-      .on("postgres_changes", {
-        event: "UPDATE", schema: "public", table: "orders",
-        filter: `id=eq.${pendingOrderId}`,
-      }, (payload) => {
-        const updated = payload.new as any;
-        if (updated.payment_status === "paid") {
-          clearCart();
-          toast.success("Payment confirmed! Finding your rider… 🏍️");
-          setPaystackUrl(null);
-          navigate(`/track/${pendingOrderId}?type=food`);
-        }
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [pendingOrderId]);
-
   if (!user || items.length === 0) return null;
 
-  const hasAddress = selectedAddr || manualAddress.trim().length > 0;
+  const resolvedAddress = selectedAddr
+    ? addresses.find((a) => a.id === selectedAddr)
+    : null;
+
+  const deliveryAddressText = resolvedAddress
+    ? `${resolvedAddress.address_line1}, ${resolvedAddress.city}`
+    : manualAddress.trim();
+
+  const hasAddress = !!deliveryAddressText;
 
   const handleFindRider = async () => {
     if (!customerName.trim()) { toast.error("Enter your name"); return; }
     if (!customerPhone.trim()) { toast.error("Enter your phone number"); return; }
     if (!hasAddress) { toast.error("Add a delivery address"); return; }
+    if (payOnDelivery === "momo" && !momoPhone.trim()) { toast.error("Enter your MoMo phone number"); return; }
 
     setLoading(true);
     try {
-      const deliveryAddress = selectedAddr
-        ? addresses.find(a => a.id === selectedAddr)?.address_line1 || "Saved address"
-        : manualAddress.trim();
+      // 1. Create the order with all details as proper columns
+      const { data: order, error: orderErr } = await (supabase as any)
+        .from("orders")
+        .insert({
+          user_id: user.id,
+          address_id: selectedAddr || null,
+          delivery_address: deliveryAddressText,
+          customer_name: customerName.trim(),
+          customer_phone: customerPhone.trim(),
+          total_amount: finalTotal,
+          delivery_fee: deliveryFee,
+          payment_method: payOnDelivery === "momo" ? "momo_on_delivery" : "cash_on_delivery",
+          momo_phone: payOnDelivery === "momo" ? momoPhone.trim() : null,
+          momo_network: payOnDelivery === "momo" ? momoNetwork : null,
+          notes: notes.trim() || null,
+          status: "pending",
+          payment_status: "pending",
+        })
+        .select()
+        .single();
 
-      if (paymentMethod === "cash_on_delivery") {
-        // Direct DB insert for cash orders
-        const { data: order, error: orderErr } = await supabase
-          .from("orders")
-          .insert({
-            user_id: user.id,
-            address_id: selectedAddr || null,
-            total_amount: finalTotal,
-            delivery_fee: deliveryFee,
-            payment_method: "cash_on_delivery",
-            notes: JSON.stringify({
-              delivery_note: notes.trim() || undefined,
-              manual_address: !selectedAddr ? manualAddress.trim() : undefined,
-              customer_name: customerName,
-              customer_phone: customerPhone,
-            }),
-            status: "pending",
-          })
-          .select()
-          .single();
+      if (orderErr) throw orderErr;
 
-        if (orderErr) throw orderErr;
+      // 2. Insert order items
+      const orderItems = items.map((ci) => ({
+        order_id: order.id,
+        item_id: ci.item.id,
+        item_name: ci.item.name,
+        quantity: ci.quantity,
+        price: ci.item.price,
+      }));
+      const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
+      if (itemsErr) throw itemsErr;
 
-        const orderItems = items.map((ci) => ({
-          order_id: order.id,
-          item_id: ci.item.id,
-          item_name: ci.item.name,
-          quantity: ci.quantity,
-          price: ci.item.price,
-        }));
-        const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
-        if (itemsErr) throw itemsErr;
+      // 3. Dispatch rider — finds nearest verified rider
+      await supabase.functions.invoke("dispatch-rider", {
+        body: { order_id: order.id },
+      }).catch(() => {}); // non-fatal if edge fn fails
 
-        // Trigger rider dispatch (finds nearest verified riders within 15km)
-        await supabase.functions.invoke("dispatch-rider", {
-          body: { order_id: order.id },
-        });
-
-        clearCart();
-        toast.success("Order placed! Finding you a rider… 🏍️");
-        navigate(`/track/${order.id}?type=food`);
-      } else {
-        // Paystack flow: call create-order edge function
-        const { data, error } = await supabase.functions.invoke("create-order", {
-          body: {
-            items: items.map(ci => ({
-              id: ci.item.id,
-              name: ci.item.name,
-              quantity: ci.quantity,
-              price: ci.item.price,
-            })),
-            delivery_address: deliveryAddress,
-            delivery_note: notes.trim() || undefined,
-            address_id: selectedAddr || undefined,
-            customer_name: customerName,
-            customer_phone: customerPhone,
-          },
-        });
-
-        if (error) throw new Error(error.message);
-        if (!data?.order_id) throw new Error("Order creation failed");
-
-        const orderId = data.order_id;
-        setPendingOrderId(orderId);
-
-        // Initialize Paystack payment
-        const { data: payData, error: payErr } = await supabase.functions.invoke("initialize-payment", {
-          body: {
-            order_id: orderId,
-            order_type: "food",
-            callback_url: `${window.location.origin}/track/${orderId}?type=food`,
-          },
-        });
-
-        if (payErr || !payData?.authorization_url) {
-          throw new Error(payErr?.message || "Failed to initialize payment");
-        }
-
-        setPaystackUrl(payData.authorization_url);
-        toast.success("Redirecting to payment…");
-      }
+      clearCart();
+      toast.success("Order placed! Finding you a rider… 🏍️");
+      navigate(`/track/${order.id}?type=food`);
     } catch (e: any) {
       toast.error(e.message || "Failed to place order");
-      setPendingOrderId(null);
     }
     setLoading(false);
   };
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      {paystackUrl && (
-        <PaystackModal
-          authorizationUrl={paystackUrl}
-          onClose={() => { setPaystackUrl(null); setPendingOrderId(null); }}
-        />
-      )}
-
       <header className="sticky top-0 z-50 border-b border-border bg-white/90 backdrop-blur-md">
         <div className="container mx-auto flex h-14 items-center gap-3 px-4">
           <button onClick={() => navigate(-1)}
-            className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
+            className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted">
             <ArrowLeft className="h-4 w-4" />
           </button>
           <h1 className="text-lg font-bold text-foreground">Your Order</h1>
@@ -242,7 +158,7 @@ const CheckoutPage = () => {
         </div>
       </header>
 
-      <div className="container mx-auto max-w-lg flex-1 space-y-4 px-4 py-5 pb-36">
+      <div className="container mx-auto max-w-lg flex-1 space-y-4 px-4 py-5 pb-40">
 
         {/* Order summary */}
         <SectionCard>
@@ -251,8 +167,7 @@ const CheckoutPage = () => {
             {items.map((ci) => (
               <div key={ci.item.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
                 <img src={ci.item.image} alt={ci.item.name}
-                  className="h-12 w-12 rounded-xl object-cover ring-1 ring-border"
-                />
+                  className="h-12 w-12 rounded-xl object-cover ring-1 ring-border" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-foreground">{ci.item.name}</p>
                   <p className="text-xs text-muted-foreground">Qty: {ci.quantity}</p>
@@ -269,25 +184,17 @@ const CheckoutPage = () => {
         <SectionCard>
           <SectionTitle icon={User}>Your Details</SectionTitle>
           <div className="space-y-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">Full Name</label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input value={customerName} onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="e.g. Alex Johnson"
-                  className="w-full rounded-xl border border-border bg-background py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input value={customerName} onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="Full Name"
+                className="w-full rounded-xl border border-border bg-background py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">Phone Number</label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="+1 XXX XXX XXXX" type="tel"
-                  className="w-full rounded-xl border border-border bg-background py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}
+                placeholder="Phone Number" type="tel"
+                className="w-full rounded-xl border border-border bg-background py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
           </div>
         </SectionCard>
@@ -304,20 +211,19 @@ const CheckoutPage = () => {
               {addresses.map((a) => (
                 <button key={a.id}
                   onClick={() => { setSelectedAddr(a.id); setManualAddress(""); }}
-                  className={`group flex w-full items-center gap-3 rounded-xl border-2 p-3.5 text-left transition-all ${
+                  className={`flex w-full items-center gap-3 rounded-xl border-2 p-3.5 text-left transition-all ${
                     selectedAddr === a.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"
-                  }`}
-                >
+                  }`}>
                   <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${selectedAddr === a.id ? "bg-primary text-white" : "bg-muted text-muted-foreground"}`}>
-                    <MapPin className="h-4 w-4" />
+                    {selectedAddr === a.id ? <CheckCircle2 className="h-4 w-4" /> : <MapPin className="h-4 w-4" />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <span className="block text-sm font-semibold text-foreground">{a.label || "Address"}</span>
                     <p className="truncate text-xs text-muted-foreground">{a.address_line1}, {a.city}</p>
                   </div>
-                  <ChevronRight className={`h-4 w-4 shrink-0 ${selectedAddr === a.id ? "text-primary" : "text-muted-foreground/40"}`} />
                 </button>
               ))}
+
               <div className={addresses.length > 0 ? "pt-1" : ""}>
                 {addresses.length > 0 && (
                   <p className="mb-2 text-center text-xs text-muted-foreground">— or type a new address —</p>
@@ -327,14 +233,13 @@ const CheckoutPage = () => {
                   <input value={manualAddress}
                     onChange={(e) => { setManualAddress(e.target.value); if (e.target.value) setSelectedAddr(null); }}
                     placeholder="Type delivery address…"
-                    className="w-full rounded-xl border border-border bg-background py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
+                    className="w-full rounded-xl border border-border bg-background py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 </div>
               </div>
+
               {addresses.length === 0 && (
                 <button onClick={() => navigate("/profile")}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border p-3 text-xs font-semibold text-primary hover:border-primary/50 transition-colors"
-                >
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border p-3 text-xs font-semibold text-primary hover:border-primary/50 transition-colors">
                   <Plus className="h-4 w-4" /> Save address to profile
                 </button>
               )}
@@ -342,23 +247,25 @@ const CheckoutPage = () => {
           )}
         </SectionCard>
 
-        {/* Payment method */}
+        {/* Pay on Delivery method */}
         <SectionCard>
-          <SectionTitle icon={CreditCard}>Payment Method</SectionTitle>
+          <SectionTitle icon={Banknote}>Pay on Delivery</SectionTitle>
+          <p className="mb-3 text-xs text-muted-foreground">
+            No payment now — you pay the rider when your order arrives.
+          </p>
           <div className="space-y-2">
             {([
-              { id: "paystack", label: "Card / Mobile Money", sub: "Visa, Mastercard, MTN MoMo, Vodafone Cash…", icon: <CreditCard className="h-5 w-5" /> },
-              { id: "cash_on_delivery", label: "Cash on Delivery", sub: "Pay cash when your order arrives", icon: <Banknote className="h-5 w-5" /> },
+              { id: "cash", label: "Cash on Delivery", sub: "Hand cash to the rider when they arrive", icon: <Banknote className="h-5 w-5" /> },
+              { id: "momo", label: "Mobile Money on Delivery", sub: "Rider sends a MoMo request when they arrive", icon: <Smartphone className="h-5 w-5" /> },
             ] as const).map((m) => (
-              <button key={m.id} onClick={() => setPaymentMethod(m.id)}
+              <button key={m.id} onClick={() => setPayOnDelivery(m.id)}
                 className={`flex w-full items-center gap-3 rounded-xl border-2 p-3.5 text-left transition-all ${
-                  paymentMethod === m.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"
-                }`}
-              >
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                  paymentMethod === m.id ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+                  payOnDelivery === m.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"
                 }`}>
-                  {paymentMethod === m.id ? <CheckCircle2 className="h-5 w-5" /> : m.icon}
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                  payOnDelivery === m.id ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+                }`}>
+                  {payOnDelivery === m.id ? <CheckCircle2 className="h-5 w-5" /> : m.icon}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold text-foreground">{m.label}</p>
@@ -367,6 +274,30 @@ const CheckoutPage = () => {
               </button>
             ))}
           </div>
+
+          {/* MoMo details */}
+          {payOnDelivery === "momo" && (
+            <div className="mt-4 space-y-3 rounded-xl bg-muted/50 p-4">
+              <p className="text-xs font-semibold text-muted-foreground">MoMo Details (for rider to send request)</p>
+              {/* Network selector */}
+              <div className="flex gap-2">
+                {MOMO_NETWORKS.map((n) => (
+                  <button key={n.id} onClick={() => setMomoNetwork(n.id)}
+                    className={`flex-1 rounded-lg border-2 py-2 text-xs font-semibold transition-all ${
+                      momoNetwork === n.id ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/30"
+                    }`}>
+                    {n.label.split(" ")[0]}
+                  </button>
+                ))}
+              </div>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input value={momoPhone} onChange={(e) => setMomoPhone(e.target.value)}
+                  placeholder="MoMo phone number" type="tel"
+                  className="w-full rounded-xl border border-border bg-background py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+            </div>
+          )}
         </SectionCard>
 
         {/* Notes */}
@@ -374,28 +305,29 @@ const CheckoutPage = () => {
           <SectionTitle icon={StickyNote}>Delivery Notes</SectionTitle>
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)}
             placeholder="Gate code, landmark, special instructions…" rows={2}
-            className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-          />
+            className="w-full resize-none rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
         </SectionCard>
 
         {/* Totals */}
-        <SectionCard className="space-y-2">
+        <SectionCard className="space-y-2.5">
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Subtotal</span>
-            <span className="font-medium text-foreground">GH₵{totalPrice.toFixed(2)}</span>
+            <span className="text-muted-foreground">Subtotal ({items.length} item{items.length !== 1 && "s"})</span>
+            <span className="font-medium">GH₵{totalPrice.toFixed(2)}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Delivery fee</span>
-            <span className="font-medium text-foreground">GH₵{deliveryFee.toFixed(2)}</span>
+            <span className="font-medium">GH₵{deliveryFee.toFixed(2)}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Payment</span>
-            <span className="font-medium text-foreground">
-              {paymentMethod === "paystack" ? "💳 Card / MoMo" : "💵 Cash on Delivery"}
+            <span className="text-muted-foreground">Pay via</span>
+            <span className="font-medium">
+              {payOnDelivery === "momo"
+                ? `📱 ${MOMO_NETWORKS.find(n => n.id === momoNetwork)?.label} (on delivery)`
+                : "💵 Cash (on delivery)"}
             </span>
           </div>
           <div className="flex items-end justify-between border-t border-border pt-3">
-            <span className="font-bold text-foreground">Total</span>
+            <span className="font-bold text-foreground">Total Due on Delivery</span>
             <span className="text-2xl font-extrabold text-primary">GH₵{finalTotal.toFixed(2)}</span>
           </div>
         </SectionCard>
@@ -411,16 +343,12 @@ const CheckoutPage = () => {
           >
             {loading ? (
               <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Placing order…</>
-            ) : paymentMethod === "paystack" ? (
-              <>💳 Pay GH₵{finalTotal.toFixed(2)}</>
             ) : (
               <>🏍️ Find a Rider — GH₵{finalTotal.toFixed(2)}</>
             )}
           </Button>
           <p className="mt-1.5 text-center text-[11px] text-muted-foreground">
-            {paymentMethod === "paystack"
-              ? "You'll be redirected to Paystack to complete payment"
-              : "Pay cash when your order arrives"}
+            You pay GH₵{finalTotal.toFixed(2)} to the rider upon delivery
           </p>
         </div>
       </div>
