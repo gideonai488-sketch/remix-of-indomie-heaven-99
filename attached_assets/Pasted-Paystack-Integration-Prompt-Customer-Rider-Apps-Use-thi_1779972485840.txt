@@ -1,0 +1,75 @@
+Paystack Integration Prompt — Customer & Rider Apps
+Use this prompt to direct a frontend agent (Expo React Native) to wire up Paystack payments + rider bank onboarding against the campus-delivery Supabase backend.
+
+Environment
+EXPO_PUBLIC_SUPABASE_URL=<from Lovable Cloud>
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<from Lovable Cloud>
+EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY=<PAYSTACK_PUBLIC_KEY secret>
+All edge functions are invoked via supabase.functions.invoke('<name>', { body }). The user's JWT is attached automatically when signed in.
+
+RIDER APP — Bank Onboarding Flow
+Screen: "Add Payout Bank" (gate withdrawals + going-online behind this)
+
+Load bank list (cache it):
+const { data } = await supabase.functions.invoke('list-banks', { method: 'GET' });
+// data.banks = [{ name, code, slug, currency }]
+Render a searchable picker.
+
+User enters account number → auto-verify on blur or when 10 digits entered:
+const { data, error } = await supabase.functions.invoke('verify-bank-account', {
+  body: { account_number, bank_code },
+});
+// data.account_name → display read-only, ask user to confirm
+Confirm & create subaccount (button: "Save payout account"):
+const { data } = await supabase.functions.invoke('create-rider-subaccount', {
+  body: { bank_code, account_number },
+});
+// Stores bank + creates Paystack subaccount with 80/20 split (rider 80%, platform 20%)
+After success, refresh the rider record from riders table. UI should show:
+
+Bank name + masked account number + verified account name ✅
+"Subaccount active — you receive 80% of every delivery"
+Block "Go Online" toggle until paystack_subaccount_code IS NOT NULL.
+
+CUSTOMER APP — Checkout Flow
+After create-order or create-parcel-order returns the order:
+
+Initialize payment:
+const { data } = await supabase.functions.invoke('initialize-payment', {
+  body: {
+    order_id,
+    order_type: 'food' | 'parcel',
+    callback_url: 'campusdelivery://payment-callback',
+  },
+});
+// data.authorization_url, data.access_code, data.reference
+Open Paystack checkout — use either:
+
+Recommended: react-native-paystack-webview with the access_code and EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY.
+Or open authorization_url in an in-app WebView and listen for the callback URL.
+Do NOT trust the WebView close event for "paid" state. Subscribe to realtime and wait for the webhook to flip payment_status to paid:
+
+supabase.channel(`order:${order_id}`)
+  .on('postgres_changes',
+    { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${order_id}` },
+    (p) => { if (p.new.payment_status === 'paid') navigateToTracking(); })
+  .subscribe();
+Once payment_status === 'paid', call dispatch-rider (or the backend does it automatically — keep current behavior).
+REVENUE SPLIT
+Paystack subaccount percentage_charge = 20 → 20% to platform, 80% to rider, settled directly by Paystack to the rider's bank.
+For orders paid BEFORE a rider is assigned (no subaccount on the transaction), funds settle to the platform account; the existing complete-delivery function already credits the rider wallet 80% in that fallback path.
+WEBHOOK CONFIGURATION (one-time, by the project owner)
+Paystack Dashboard → Settings → API Keys & Webhooks → Webhook URL:
+
+https://cgadnsuyezixjdrjkbvb.supabase.co/functions/v1/paystack-webhook
+The function verifies HMAC-SHA512 with PAYSTACK_SECRET_KEY and is public (no JWT).
+
+EDGE FUNCTIONS REFERENCE
+Function	Auth	Purpose
+list-banks	public	List Paystack-supported banks (default Nigeria)
+verify-bank-account	JWT	Resolve account_number → account_name
+create-rider-subaccount	JWT (rider)	Create/update Paystack subaccount with 80/20 split
+initialize-payment	JWT (customer)	Start a transaction; attaches rider subaccount if assigned
+paystack-webhook	public + HMAC	Mark order paid on charge.success
+FUTURE: STRIPE FOR OTHER COUNTRIES
+When Stripe is added, gate provider selection on profiles.country (or campus.country) and invoke initialize-payment-stripe instead. Keep the rest of the order flow identical.
