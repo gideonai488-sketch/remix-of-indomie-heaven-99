@@ -47,6 +47,14 @@ const PushRegistrar = () => {
 
 const showAdmin = !isNativePlatform();
 
+// Separate component so localStorage is checked on every render (not once at App mount)
+const HomeRoute = () => {
+  if (!localStorage.getItem("speedup_onboarded")) {
+    return <Navigate to="/onboarding" replace />;
+  }
+  return <Index />;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -60,14 +68,7 @@ const App = () => (
             <Suspense fallback={<AppLoadingSkeleton />}>
               <Routes>
                 <Route path="/onboarding" element={<OnboardingPage />} />
-                <Route
-                  path="/"
-                  element={
-                    localStorage.getItem("speedup_onboarded")
-                      ? <Index />
-                      : <Navigate to="/onboarding" replace />
-                  }
-                />
+                <Route path="/" element={<HomeRoute />} />
                 <Route path="/menu" element={<MenuPage />} />
                 <Route path="/auth" element={<AuthPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
