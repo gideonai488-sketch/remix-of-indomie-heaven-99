@@ -52,13 +52,11 @@ workflows:
 
       - name: Install Node dependencies
         script: |
-          cd artifacts/food-ordering
           pnpm install --frozen-lockfile
 
       - name: Build web assets
         script: |
-          cd artifacts/food-ordering
-          pnpm run build:cap
+          pnpm --filter @workspace/food-ordering run build:cap
 
       - name: Generate Android icons from owl icon
         script: |
