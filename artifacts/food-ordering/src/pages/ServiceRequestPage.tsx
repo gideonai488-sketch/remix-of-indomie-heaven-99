@@ -150,7 +150,7 @@ const ServiceRequestPage = () => {
           customer_id: user.id,
           total_amount: BASE_FARE,
           delivery_fee: 0,
-          payment_method: "cash_on_delivery",
+          payment_method: "paystack",
           notes: notesPayload,
           status: "pending",
         })
