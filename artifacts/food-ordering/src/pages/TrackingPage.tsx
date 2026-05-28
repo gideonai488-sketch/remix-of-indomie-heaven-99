@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  ArrowLeft, Phone, CheckCircle2, Loader2, Banknote, X, Star, MapPin, Clock, Route, Zap,
+  ArrowLeft, Phone, CheckCircle2, Loader2, X, Star, MapPin, Clock, Route, Zap, CreditCard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -16,7 +16,11 @@ interface TrackOrder {
   total_amount: number;
   delivery_fee: number;
   payment_method: string;
-  momo_phone?: string | null;
+  payment_status?: string | null;
+  rider_id?: string | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  delivery_address?: string | null;
   notes?: string | null;
   created_at: string;
   order_items?: Array<{ id: string; item_name: string; quantity: number; price: number }>;
@@ -201,67 +205,132 @@ const SearchingRider = () => (
   </div>
 );
 
+// -------- Paystack iframe --------
+const PaystackFrame = ({ url, onClose }: { url: string; onClose: () => void }) => (
+  <div className="fixed inset-0 z-[200] flex flex-col bg-white">
+    <div className="flex items-center justify-between border-b border-border px-4 py-3">
+      <p className="font-bold text-foreground">Complete Payment</p>
+      <button onClick={onClose} className="rounded-full p-1.5 text-muted-foreground hover:bg-muted">
+        <X className="h-5 w-5"/>
+      </button>
+    </div>
+    <iframe src={url} className="flex-1 w-full border-0" title="Paystack Payment"/>
+    <p className="py-2 text-center text-[10px] text-muted-foreground">
+      Secured by Paystack · Do not close until payment completes
+    </p>
+  </div>
+);
+
 // -------- Payment Modal --------
 const PaymentModal = ({ order, onClose }: { order: TrackOrder; onClose: () => void }) => {
-  const [paid, setPaid] = useState(false);
   const parsedNotes = parseNotes(order.notes);
   const isService = !!parsedNotes?.service_type;
-  const amount = order.total_amount;
+  const subtotal = (order.order_items || []).reduce((s, i) => s + i.price * i.quantity, 0) || order.total_amount - (order.delivery_fee || 0);
+  const deliveryFee = order.delivery_fee || 0;
+  const platformCut = +(deliveryFee * 0.2).toFixed(2);   // 20% admin
+  const riderShare  = +(deliveryFee * 0.8).toFixed(2);   // 80% rider
+  const total = order.total_amount;
+
+  const [loading, setLoading] = useState(false);
+  const [paystackUrl, setPaystackUrl] = useState<string | null>(null);
+  const [rating, setRating] = useState(0);
+
+  const handlePayNow = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("initialize-payment", {
+        body: {
+          order_id: order.id,
+          order_type: isService ? "service" : "food",
+          rider_id: order.rider_id || undefined,
+          callback_url: `${window.location.origin}/track/${order.id}?type=${isService ? "service" : "food"}&paid=1`,
+        },
+      });
+      if (error || !data?.authorization_url) throw new Error(error?.message || "Payment init failed");
+      setPaystackUrl(data.authorization_url);
+    } catch (e: any) {
+      toast.error(e.message || "Could not start payment");
+    }
+    setLoading(false);
+  };
+
+  if (paystackUrl) return <PaystackFrame url={paystackUrl} onClose={() => setPaystackUrl(null)}/>;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
       <div className="w-full max-w-md rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl">
-        <div className="mb-5 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-              <CheckCircle2 className="h-5 w-5 text-primary"/>
+
+        {/* Header */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
+              <CheckCircle2 className="h-5 w-5 text-green-600"/>
             </div>
             <div>
               <p className="font-bold text-foreground">Delivery Complete! 🎉</p>
-              <p className="text-xs text-muted-foreground">Confirm payment to rider</p>
+              <p className="text-xs text-muted-foreground">Tap Pay Now to complete your order</p>
             </div>
           </div>
-          {!paid && <button onClick={onClose} className="rounded-full p-1.5 text-muted-foreground hover:bg-muted"><X className="h-4 w-4"/></button>}
+          <button onClick={onClose} className="rounded-full p-1.5 text-muted-foreground hover:bg-muted">
+            <X className="h-4 w-4"/>
+          </button>
         </div>
 
-        <div className="mb-5 flex flex-col items-center rounded-2xl bg-primary/5 p-5 text-center">
-          <span className="text-5xl mb-2">🎉</span>
-          {isService && amount <= BASE_FARE ? (
-            <>
-              <p className="font-display text-2xl font-black text-primary">Amount due</p>
-              <p className="text-sm text-muted-foreground mt-1">Ask rider for final fare (km + time)</p>
-              <div className="mt-2 flex items-center gap-1.5 rounded-xl bg-primary/10 px-3 py-1.5">
-                <Zap className="h-3.5 w-3.5 text-primary"/>
-                <p className="text-xs text-primary font-medium">GH₵{BASE_FARE} base + km + min rate</p>
-              </div>
-            </>
-          ) : (
-            <>
-              <p className="font-display text-4xl font-black text-primary">GH₵{amount.toFixed(2)}</p>
-              {isService && <p className="text-xs text-muted-foreground mt-1">Base + distance + time</p>}
-            </>
+        {/* Itemized breakdown */}
+        <div className="mb-4 rounded-2xl border border-border bg-muted/30 divide-y divide-border overflow-hidden">
+          {(order.order_items || []).map(item => (
+            <div key={item.id} className="flex justify-between px-4 py-2.5 text-sm">
+              <span className="text-foreground">{item.item_name} × {item.quantity}</span>
+              <span className="font-semibold">GH₵{(item.price * item.quantity).toFixed(2)}</span>
+            </div>
+          ))}
+          {(order.order_items || []).length > 0 && (
+            <div className="flex justify-between px-4 py-2.5 text-sm text-muted-foreground">
+              <span>Subtotal</span>
+              <span>GH₵{subtotal.toFixed(2)}</span>
+            </div>
           )}
-        </div>
-
-        <div className="mb-5 text-center">
-          <p className="mb-2 text-sm font-medium text-muted-foreground">Rate your rider</p>
-          <div className="flex justify-center gap-2">
-            {[1,2,3,4,5].map(s=><Star key={s} className="h-7 w-7 cursor-pointer text-accent fill-accent"/>)}
+          <div className="flex justify-between px-4 py-2.5 text-sm text-muted-foreground">
+            <span>Delivery fee</span>
+            <span>GH₵{deliveryFee.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between px-4 py-2.5 text-xs text-muted-foreground/70">
+            <span>↳ Platform (20%)</span>
+            <span>GH₵{platformCut.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between px-4 py-2.5 text-xs text-muted-foreground/70">
+            <span>↳ Rider (80%)</span>
+            <span>GH₵{riderShare.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between px-4 py-3 font-bold">
+            <span className="text-foreground">Total</span>
+            <span className="text-xl text-primary">GH₵{total.toFixed(2)}</span>
           </div>
         </div>
 
-        <div className="mb-4 flex items-center gap-2 rounded-xl bg-muted/50 p-3 text-sm">
-          <Banknote className="h-4 w-4 text-primary shrink-0"/>
-          <span className="text-muted-foreground">Hand cash to the rider when they arrive</span>
+        {/* Star rating */}
+        <div className="mb-4 text-center">
+          <p className="mb-2 text-sm font-medium text-muted-foreground">Rate your rider</p>
+          <div className="flex justify-center gap-1.5">
+            {[1,2,3,4,5].map(s => (
+              <button key={s} onClick={() => setRating(s)}>
+                <Star className={`h-7 w-7 transition-colors ${s <= rating ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground/30"}`}/>
+              </button>
+            ))}
+          </div>
         </div>
 
-        <Button
-          onClick={() => { setPaid(true); toast.success("Thank you! 🙏"); setTimeout(onClose, 1200); }}
-          disabled={paid}
-          className="w-full rounded-2xl bg-primary py-5 text-base font-bold text-white shadow-warm"
-        >
-          {paid ? <><CheckCircle2 className="mr-2 h-5 w-5"/>Done!</> : "Confirm Payment ✓"}
+        {/* Pay Now */}
+        <Button onClick={handlePayNow} disabled={loading}
+          className="w-full rounded-2xl bg-primary py-5 text-base font-bold text-white shadow-warm">
+          {loading
+            ? <><Loader2 className="mr-2 h-5 w-5 animate-spin"/>Opening Paystack…</>
+            : <><CreditCard className="mr-2 h-5 w-5"/>Pay Now — GH₵{total.toFixed(2)}</>
+          }
         </Button>
+        <p className="mt-2 text-center text-[10px] text-muted-foreground">
+          Card · MTN MoMo · Vodafone Cash · AirtelTigo · Secured by Paystack
+        </p>
       </div>
     </div>
   );
@@ -317,7 +386,9 @@ const TrackingPage = () => {
   };
 
   const pickupAddr = isServiceOrder ? (parsedNotes?.pickup_address || "Pickup location") : "Restaurant / Shop";
-  const deliveryAddr = isServiceOrder ? (parsedNotes?.delivery_address || "Your location") : (parsedNotes?.manual_address || "Your address");
+  const deliveryAddr = isServiceOrder
+    ? (parsedNotes?.delivery_address || "Your location")
+    : (order.delivery_address || parsedNotes?.manual_address || "Your address");
 
   return (
     <div className="flex min-h-screen flex-col bg-background">

@@ -7,8 +7,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, MapPin, Loader2, Phone, User,
-  ShoppingBag, StickyNote,
-  Banknote, Smartphone, CheckCircle2,
+  ShoppingBag, StickyNote, CheckCircle2,
 } from "lucide-react";
 
 const SectionCard = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
@@ -19,14 +18,6 @@ const SectionTitle = ({ icon: Icon, children }: { icon: React.ElementType; child
     <Icon className="h-4 w-4 text-primary" /> {children}
   </h3>
 );
-
-type PayOnDelivery = "cash" | "momo";
-
-const MOMO_NETWORKS = [
-  { id: "mtn", label: "MTN MoMo", color: "bg-yellow-400" },
-  { id: "vodafone", label: "Vodafone Cash", color: "bg-red-500" },
-  { id: "airteltigo", label: "AirtelTigo Money", color: "bg-red-700" },
-];
 
 const CheckoutPage = () => {
   const { user } = useAuth();
@@ -43,13 +34,7 @@ const CheckoutPage = () => {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
 
-  // Payment on delivery
-  const [payOnDelivery, setPayOnDelivery] = useState<PayOnDelivery>("cash");
-  const [momoPhone, setMomoPhone] = useState("");
-  const [momoNetwork, setMomoNetwork] = useState("mtn");
-
-  // Delivery fee — fetched from backend config or default
-  const [deliveryFee, setDeliveryFee] = useState(10);
+  const [deliveryFee] = useState(10);
   const finalTotal = totalPrice + deliveryFee;
 
   useEffect(() => { if (!user) navigate("/auth", { replace: true }); }, [user, navigate]);
@@ -68,7 +53,6 @@ const CheckoutPage = () => {
       if (profileRes.data) {
         setCustomerName(profileRes.data.name || "");
         setCustomerPhone(profileRes.data.phone || "");
-        if (profileRes.data.phone) setMomoPhone(profileRes.data.phone);
       }
       setDataLoaded(true);
     };
@@ -91,7 +75,6 @@ const CheckoutPage = () => {
     if (!customerName.trim()) { toast.error("Enter your name"); return; }
     if (!customerPhone.trim()) { toast.error("Enter your phone number"); return; }
     if (!hasAddress) { toast.error("Add a delivery address"); return; }
-    if (payOnDelivery === "momo" && !momoPhone.trim()) { toast.error("Enter your MoMo phone number"); return; }
 
     setLoading(true);
     try {
@@ -105,9 +88,7 @@ const CheckoutPage = () => {
           customer_phone: customerPhone.trim(),
           total_amount: finalTotal,
           delivery_fee: deliveryFee,
-          payment_method: payOnDelivery === "momo" ? "momo_on_delivery" : "cash_on_delivery",
-          momo_phone: payOnDelivery === "momo" ? momoPhone.trim() : null,
-          momo_network: payOnDelivery === "momo" ? momoNetwork : null,
+          payment_method: "pay_on_delivery",
           notes: notes.trim() || null,
           status: "pending",
           payment_status: "pending",
@@ -252,59 +233,6 @@ const CheckoutPage = () => {
           </div>
         </SectionCard>
 
-        {/* Pay on Delivery method */}
-        <SectionCard>
-          <SectionTitle icon={Banknote}>Pay on Delivery</SectionTitle>
-          <p className="mb-3 text-xs text-muted-foreground">
-            No payment now — you pay the rider when your order arrives.
-          </p>
-          <div className="space-y-2">
-            {([
-              { id: "cash", label: "Cash on Delivery", sub: "Hand cash to the rider when they arrive", icon: <Banknote className="h-5 w-5" /> },
-              { id: "momo", label: "Mobile Money on Delivery", sub: "Rider sends a MoMo request when they arrive", icon: <Smartphone className="h-5 w-5" /> },
-            ] as const).map((m) => (
-              <button key={m.id} onClick={() => setPayOnDelivery(m.id)}
-                className={`flex w-full items-center gap-3 rounded-xl border-2 p-3.5 text-left transition-all ${
-                  payOnDelivery === m.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"
-                }`}>
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                  payOnDelivery === m.id ? "bg-primary text-white" : "bg-muted text-muted-foreground"
-                }`}>
-                  {payOnDelivery === m.id ? <CheckCircle2 className="h-5 w-5" /> : m.icon}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-foreground">{m.label}</p>
-                  <p className="text-xs text-muted-foreground">{m.sub}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          {/* MoMo details */}
-          {payOnDelivery === "momo" && (
-            <div className="mt-4 space-y-3 rounded-xl bg-muted/50 p-4">
-              <p className="text-xs font-semibold text-muted-foreground">MoMo Details (for rider to send request)</p>
-              {/* Network selector */}
-              <div className="flex gap-2">
-                {MOMO_NETWORKS.map((n) => (
-                  <button key={n.id} onClick={() => setMomoNetwork(n.id)}
-                    className={`flex-1 rounded-lg border-2 py-2 text-xs font-semibold transition-all ${
-                      momoNetwork === n.id ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/30"
-                    }`}>
-                    {n.label.split(" ")[0]}
-                  </button>
-                ))}
-              </div>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input value={momoPhone} onChange={(e) => setMomoPhone(e.target.value)}
-                  placeholder="MoMo phone number" type="tel"
-                  className="w-full rounded-xl border border-border bg-background py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
-              </div>
-            </div>
-          )}
-        </SectionCard>
-
         {/* Notes */}
         <SectionCard>
           <SectionTitle icon={StickyNote}>Delivery Notes</SectionTitle>
@@ -323,18 +251,13 @@ const CheckoutPage = () => {
             <span className="text-muted-foreground">Delivery fee</span>
             <span className="font-medium">GH₵{deliveryFee.toFixed(2)}</span>
           </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Pay via</span>
-            <span className="font-medium">
-              {payOnDelivery === "momo"
-                ? `📱 ${MOMO_NETWORKS.find(n => n.id === momoNetwork)?.label} (on delivery)`
-                : "💵 Cash (on delivery)"}
-            </span>
-          </div>
           <div className="flex items-end justify-between border-t border-border pt-3">
-            <span className="font-bold text-foreground">Total Due on Delivery</span>
+            <span className="font-bold text-foreground">Total</span>
             <span className="text-2xl font-extrabold text-primary">GH₵{finalTotal.toFixed(2)}</span>
           </div>
+          <p className="text-center text-xs text-muted-foreground">
+            💳 Payment collected by Paystack when rider completes delivery
+          </p>
         </SectionCard>
       </div>
 
@@ -353,7 +276,7 @@ const CheckoutPage = () => {
             )}
           </Button>
           <p className="mt-1.5 text-center text-[11px] text-muted-foreground">
-            You pay GH₵{finalTotal.toFixed(2)} to the rider upon delivery
+            Paystack payment requested when rider completes delivery
           </p>
         </div>
       </div>
