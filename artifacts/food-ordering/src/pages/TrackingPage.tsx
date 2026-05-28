@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
-mapboxgl.accessToken = "pk.eyJ1IjoidHJhdmVsbWF0ZTExMjMiLCJhIjoiY21oc2hmM3g5MGo0ajJzcjg1cHgzYjFtYSJ9.5WCLBT_KSghCcRtzH3xreQ";
+mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string;
 
 type OrderStatus = "pending" | "searching_rider" | "assigned" | "accepted" | "confirmed" | "preparing" | "picked_up" | "in_transit" | "delivered" | "cancelled";
 
@@ -109,7 +109,7 @@ const FareMeter = ({ running, finalAmount }: { running: boolean; finalAmount: nu
 // -------- Mapbox Live Tracking Map --------
 const ACCRA: [number, number] = [-0.1870, 5.6037];
 // Public pk.* token — safe to hardcode in frontend code
-const TOKEN = "pk.eyJ1IjoidHJhdmVsbWF0ZTExMjMiLCJhIjoiY21oc2hmM3g5MGo0ajJzcjg1cHgzYjFtYSJ9.5WCLBT_KSghCcRtzH3xreQ";
+const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
 
 async function geocode(query: string): Promise<[number, number] | null> {
   try {
@@ -442,7 +442,7 @@ const SearchingRider = () => (
 );
 
 // Paystack public key — used with access_code from initialize-payment edge function
-const PAYSTACK_PUBLIC_KEY = "pk_live_671fccd651daf066804466572cfd0b7c47df2471";
+const PAYSTACK_PUBLIC_KEY = import.meta.env.VITE_PAYSTACK_KEY as string;
 
 // -------- Paystack checkout iframe --------
 const PaystackFrame = ({

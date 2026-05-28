@@ -6,7 +6,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 // Public pk.* token — safe to hardcode in frontend code
-const MAPBOX_TOKEN = "pk.eyJ1IjoidHJhdmVsbWF0ZTExMjMiLCJhIjoiY21oc2hmM3g5MGo0ajJzcjg1cHgzYjFtYSJ9.5WCLBT_KSghCcRtzH3xreQ";
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
 type OrderStatus = "pending" | "confirmed" | "preparing" | "delivering" | "delivered";
