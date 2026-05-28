@@ -41,7 +41,7 @@ const InputField = ({
   </div>
 );
 
-type SignupStep = "phone" | "otp" | "details";
+type SignupStep = "details" | "otp";
 
 const AuthPage = () => {
   const { signUpWithPhone, sendOtp, verifyOtp, signInWithPhone } = useAuth();
@@ -58,15 +58,14 @@ const AuthPage = () => {
   const [loginPhone, setLoginPhone] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
 
-  // Signup — multi-step
-  const [signupStep, setSignupStep] = useState<SignupStep>("phone");
-  const [signupPhone, setSignupPhone] = useState("");
-  const [otpCode, setOtpCode] = useState("");
+  // Signup — two-step: details first, then OTP
+  const [signupStep, setSignupStep] = useState<SignupStep>("details");
   const [signupName, setSignupName] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
+  const [signupPhone, setSignupPhone] = useState("");
   const [signupPassword, setSignupPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [otpSentTo, setOtpSentTo] = useState("");
+  const [otpCode, setOtpCode] = useState("");
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,23 +82,39 @@ const AuthPage = () => {
     setLoading(false);
   };
 
-  // Step 1: send OTP
-  const handleSendOtp = async (e: React.FormEvent) => {
+  // Step 1: collect all details → create account → send OTP
+  const handleCreateAndSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!signupName.trim()) { toast.error("Enter your full name"); return; }
+    if (!signupEmail.trim() || !signupEmail.includes("@")) { toast.error("Enter a valid email"); return; }
     if (!signupPhone.trim()) { toast.error("Enter your phone number"); return; }
+    if (signupPassword.length < 6) { toast.error("Password must be at least 6 characters"); return; }
+    if (signupPassword !== confirmPassword) { toast.error("Passwords don't match"); return; }
+
     setLoading(true);
-    const { error } = await sendOtp(signupPhone.trim());
-    if (error) {
-      toast.error(error);
-    } else {
-      setOtpSentTo(signupPhone.trim());
-      setSignupStep("otp");
-      toast.success("Code sent! Check your SMS.");
+    // Create auth account first
+    const { error: signupErr } = await signUpWithPhone(
+      signupName.trim(), signupPhone.trim(), signupPassword, signupEmail.trim()
+    );
+    if (signupErr) { toast.error(signupErr); setLoading(false); return; }
+
+    // Then send OTP to verify phone
+    const { error: otpErr } = await sendOtp(signupPhone.trim());
+    if (otpErr) {
+      // Account created but OTP failed — still let them in
+      toast.success("Account created! Signing you in…");
+      const { error: loginErr } = await signInWithPhone(signupPhone.trim(), signupPassword);
+      if (!loginErr) navigate(searchParams.get("redirect") || "/");
+      setLoading(false);
+      return;
     }
+
+    toast.success("Account created! Check your SMS for a verification code.");
+    setSignupStep("otp");
     setLoading(false);
   };
 
-  // Step 2: verify OTP
+  // Step 2: verify OTP → sign in
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (otpCode.length < 4) { toast.error("Enter the 6-digit code"); return; }
@@ -107,45 +122,28 @@ const AuthPage = () => {
     const { error } = await verifyOtp(signupPhone.trim(), otpCode.trim());
     if (error) {
       toast.error(error);
-    } else {
-      setSignupStep("details");
-      toast.success("Phone verified! ✅");
+      setLoading(false);
+      return;
     }
-    setLoading(false);
-  };
-
-  // Step 3: create account
-  const handleCreateAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!signupName.trim()) { toast.error("Enter your full name"); return; }
-    if (!signupEmail.trim() || !signupEmail.includes("@")) { toast.error("Enter a valid email address"); return; }
-    if (signupPassword.length < 6) { toast.error("Password must be at least 6 characters"); return; }
-    if (signupPassword !== confirmPassword) { toast.error("Passwords don't match"); return; }
-    setLoading(true);
-    const { error } = await signUpWithPhone(signupName.trim(), signupPhone.trim(), signupPassword, signupEmail.trim());
-    if (error) {
-      toast.error(error);
+    toast.success("Phone verified! Signing you in… 🎉");
+    const { error: loginErr } = await signInWithPhone(signupPhone.trim(), signupPassword);
+    if (!loginErr) {
+      navigate(searchParams.get("redirect") || "/");
     } else {
-      toast.success("Account created! Signing you in… 🎉");
-      const { error: loginErr } = await signInWithPhone(signupPhone.trim(), signupPassword);
-      if (!loginErr) {
-        navigate(searchParams.get("redirect") || "/");
-      } else {
-        setTab("login");
-        setSignupStep("phone");
-        toast("Account ready — please sign in.");
-      }
+      setTab("login");
+      toast("Verified! Please sign in.");
     }
     setLoading(false);
   };
 
   const resetSignup = () => {
-    setSignupStep("phone");
-    setSignupPhone("");
-    setOtpCode("");
+    setSignupStep("details");
     setSignupName("");
+    setSignupEmail("");
+    setSignupPhone("");
     setSignupPassword("");
     setConfirmPassword("");
+    setOtpCode("");
   };
 
   return (
@@ -219,78 +217,21 @@ const AuthPage = () => {
               </form>
             )}
 
-            {/* -------- SIGNUP: STEP 1 — PHONE -------- */}
-            {tab === "signup" && signupStep === "phone" && (
-              <form onSubmit={handleSendOtp} className="space-y-4">
-                <div className="mb-2 rounded-2xl bg-primary/5 border border-primary/20 p-3 text-xs text-muted-foreground">
-                  <p className="font-semibold text-primary mb-0.5">Step 1 of 3 — Phone Verification</p>
-                  We'll send a 6-digit code to confirm your number.
-                </div>
-                <InputField label="Phone Number" placeholder="+1 XXX XXX XXXX" value={signupPhone}
-                  onChange={setSignupPhone} type="tel" icon={Phone} autoComplete="tel"
-                />
-                <Button type="submit" disabled={loading}
-                  className="mt-2 w-full rounded-2xl bg-primary py-6 text-base font-bold text-white shadow-warm hover:scale-[1.01] active:scale-95 disabled:opacity-60"
-                >
-                  {loading ? (
-                    <span className="flex items-center gap-2">
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                      Sending code…
-                    </span>
-                  ) : "Send Verification Code →"}
-                </Button>
-                <p className="text-center text-xs text-muted-foreground">
-                  Already have an account?{" "}
-                  <button type="button" onClick={() => setTab("login")} className="font-bold text-primary hover:underline">
-                    Sign in
-                  </button>
-                </p>
-              </form>
-            )}
-
-            {/* -------- SIGNUP: STEP 2 — OTP -------- */}
-            {tab === "signup" && signupStep === "otp" && (
-              <form onSubmit={handleVerifyOtp} className="space-y-4">
-                <div className="mb-2 rounded-2xl bg-primary/5 border border-primary/20 p-3 text-xs text-muted-foreground">
-                  <p className="font-semibold text-primary mb-0.5">Step 2 of 3 — Enter Code</p>
-                  Code sent to <span className="font-bold text-foreground">{otpSentTo}</span>. Expires in 10 min.
-                </div>
-                <InputField label="6-Digit Code" placeholder="123456" value={otpCode}
-                  onChange={setOtpCode} type="number" icon={KeyRound}
-                  autoComplete="one-time-code" maxLength={6}
-                />
-                <Button type="submit" disabled={loading}
-                  className="mt-2 w-full rounded-2xl bg-primary py-6 text-base font-bold text-white shadow-warm hover:scale-[1.01] active:scale-95 disabled:opacity-60"
-                >
-                  {loading ? (
-                    <span className="flex items-center gap-2">
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                      Verifying…
-                    </span>
-                  ) : "Verify Code →"}
-                </Button>
-                <button type="button" onClick={() => setSignupStep("phone")}
-                  className="w-full text-center text-xs text-muted-foreground hover:text-primary"
-                >
-                  ← Wrong number? Go back
-                </button>
-              </form>
-            )}
-
-            {/* -------- SIGNUP: STEP 3 — DETAILS -------- */}
+            {/* -------- SIGNUP: STEP 1 — ALL DETAILS -------- */}
             {tab === "signup" && signupStep === "details" && (
-              <form onSubmit={handleCreateAccount} className="space-y-4">
-                <div className="mb-2 rounded-2xl bg-green-50 border border-green-200 p-3 text-xs text-green-700">
-                  <p className="font-semibold mb-0.5 flex items-center gap-1.5">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Step 3 of 3 — Your Details
-                  </p>
-                  Phone verified! Fill in your details and create a password.
+              <form onSubmit={handleCreateAndSendOtp} className="space-y-4">
+                <div className="mb-2 rounded-2xl bg-primary/5 border border-primary/20 p-3 text-xs text-muted-foreground">
+                  <p className="font-semibold text-primary mb-0.5">Step 1 of 2 — Create Account</p>
+                  Fill in your details. We'll verify your phone number next.
                 </div>
                 <InputField label="Full Name" placeholder="e.g. Alex Johnson" value={signupName}
                   onChange={setSignupName} icon={User} autoComplete="name"
                 />
                 <InputField label="Email Address" placeholder="you@example.com" value={signupEmail}
                   onChange={setSignupEmail} type="email" icon={Mail} autoComplete="email"
+                />
+                <InputField label="Phone Number" placeholder="+1 XXX XXX XXXX" value={signupPhone}
+                  onChange={setSignupPhone} type="tel" icon={Phone} autoComplete="tel"
                 />
                 <InputField label="Password" placeholder="Min. 6 characters" value={signupPassword}
                   onChange={setSignupPassword} type={showPassword ? "text" : "password"}
@@ -310,8 +251,46 @@ const AuthPage = () => {
                       <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
                       Creating account…
                     </span>
-                  ) : "Create Account & Sign In ⚡"}
+                  ) : "Create Account →"}
                 </Button>
+                <p className="text-center text-xs text-muted-foreground">
+                  Already have an account?{" "}
+                  <button type="button" onClick={() => setTab("login")} className="font-bold text-primary hover:underline">
+                    Sign in
+                  </button>
+                </p>
+              </form>
+            )}
+
+            {/* -------- SIGNUP: STEP 2 — VERIFY PHONE -------- */}
+            {tab === "signup" && signupStep === "otp" && (
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
+                <div className="mb-2 rounded-2xl bg-green-50 border border-green-200 p-3 text-xs text-green-700">
+                  <p className="font-semibold mb-0.5 flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Step 2 of 2 — Verify Phone
+                  </p>
+                  Account created! Enter the 6-digit code sent to{" "}
+                  <span className="font-bold text-green-800">{signupPhone}</span>. Expires in 10 min.
+                </div>
+                <InputField label="6-Digit Code" placeholder="123456" value={otpCode}
+                  onChange={setOtpCode} type="number" icon={KeyRound}
+                  autoComplete="one-time-code" maxLength={6}
+                />
+                <Button type="submit" disabled={loading}
+                  className="mt-2 w-full rounded-2xl bg-primary py-6 text-base font-bold text-white shadow-warm hover:scale-[1.01] active:scale-95 disabled:opacity-60"
+                >
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                      Verifying…
+                    </span>
+                  ) : "Verify & Sign In ⚡"}
+                </Button>
+                <button type="button" onClick={() => setSignupStep("details")}
+                  className="w-full text-center text-xs text-muted-foreground hover:text-primary"
+                >
+                  ← Back to edit details
+                </button>
               </form>
             )}
           </div>
