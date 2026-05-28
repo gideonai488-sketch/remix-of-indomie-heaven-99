@@ -52,7 +52,7 @@ workflows:
 
       - name: Install Node dependencies
         script: |
-          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm install
 
       - name: Build web assets
         script: |
