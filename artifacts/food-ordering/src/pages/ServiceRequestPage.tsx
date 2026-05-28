@@ -4,10 +4,16 @@ import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { SERVICE_DEFS, ServiceType } from "@/types/services";
 import {
-  ArrowLeft, MapPin, User, Phone, Loader2, StickyNote,
+  ArrowLeft, MapPin, User, Phone, Loader2, StickyNote, Zap, Clock, Route,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+
+// Pricing constants
+const BASE_FARE = 5;
+const PER_KM_RATE = 2.0;
+const PER_MIN_RATE = 0.3;
+const MIN_FARE = 10;
 
 const SectionCard = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
   <div className={`rounded-2xl border border-border bg-card p-5 shadow-card ${className}`}>{children}</div>
@@ -27,7 +33,7 @@ const Field = ({
   placeholder?: string; type?: string; icon?: React.ElementType; rows?: number;
 }) => (
   <div>
-    <label className="mb-1 block text-xs font-medium text-muted-foreground">{label}</label>
+    {label ? <label className="mb-1 block text-xs font-medium text-muted-foreground">{label}</label> : null}
     <div className="relative">
       {Icon && !rows && <Icon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />}
       {rows ? (
@@ -66,18 +72,19 @@ const ServiceRequestPage = () => {
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Errand
   const [errandTask, setErrandTask] = useState("");
   const [errandBudget, setErrandBudget] = useState("");
-
+  // Parcel
   const [parcelDesc, setParcelDesc] = useState("");
   const [parcelWeight, setParcelWeight] = useState("light");
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
-
+  // Package
   const [packageDesc, setPackageDesc] = useState("");
   const [packageSize, setPackageSize] = useState("small");
   const [isFragile, setIsFragile] = useState(false);
-
+  // Pharmacy
   const [pharmacyName, setPharmacyName] = useState("");
   const [medications, setMedications] = useState("");
 
@@ -101,8 +108,6 @@ const ServiceRequestPage = () => {
 
   if (!svcDef || !user) return null;
 
-  const serviceFee = 20;
-
   const buildDetails = () => {
     if (serviceType === "errand") return { task: errandTask, budget: errandBudget };
     if (serviceType === "parcel") return { description: parcelDesc, weight: parcelWeight, recipient_name: recipientName, recipient_phone: recipientPhone };
@@ -113,7 +118,7 @@ const ServiceRequestPage = () => {
 
   const validate = () => {
     if (!customerName.trim()) { toast.error("Enter your name"); return false; }
-    if (!customerPhone.trim()) { toast.error("Enter your phone number"); return false; }
+    if (!customerPhone.trim()) { toast.error("Enter your phone"); return false; }
     if (!pickupAddress.trim()) { toast.error("Enter pickup / task location"); return false; }
     if (!deliveryAddress.trim()) { toast.error("Enter delivery address"); return false; }
     if (serviceType === "errand" && !errandTask.trim()) { toast.error("Describe the errand"); return false; }
@@ -127,7 +132,6 @@ const ServiceRequestPage = () => {
     if (!validate()) return;
     setLoading(true);
     try {
-      // Build notes JSON — all service details stored here for rider app
       const notesPayload = JSON.stringify({
         service_type: serviceType,
         pickup_address: pickupAddress,
@@ -138,13 +142,13 @@ const ServiceRequestPage = () => {
         extra_notes: notes || null,
       });
 
-      // Insert into orders table — riders can see + accept
+      // total_amount = BASE_FARE as starting value; rider app updates final on delivery
       const { data: order, error: orderErr } = await supabase
         .from("orders")
         .insert({
           user_id: user.id,
           address_id: null,
-          total_amount: serviceFee,
+          total_amount: BASE_FARE,
           delivery_fee: 0,
           payment_method: "cash_on_delivery",
           notes: notesPayload,
@@ -155,15 +159,13 @@ const ServiceRequestPage = () => {
 
       if (orderErr) throw orderErr;
 
-      // Single order_item represents the service
-      const { error: itemErr } = await supabase.from("order_items").insert({
+      await supabase.from("order_items").insert({
         order_id: order.id,
         item_id: `service-${serviceType}`,
         item_name: `${svcDef.label} ${svcDef.icon}`,
         quantity: 1,
-        price: serviceFee,
+        price: BASE_FARE,
       });
-      if (itemErr) throw itemErr;
 
       toast.success("Request submitted! Finding you a rider… 🏍️");
       navigate(`/track/${order.id}?type=service`);
@@ -187,17 +189,48 @@ const ServiceRequestPage = () => {
 
       <div className="container mx-auto max-w-lg flex-1 space-y-4 px-4 py-5 pb-32">
 
-        {/* Badge */}
+        {/* Service badge */}
         <div className={`flex items-center gap-3 rounded-2xl p-4 ${svcDef.color}`}>
           <span className="text-4xl">{svcDef.icon}</span>
-          <div>
+          <div className="flex-1">
             <p className={`font-bold ${svcDef.accent}`}>{svcDef.label}</p>
             <p className="text-xs text-muted-foreground">{svcDef.tagline}</p>
           </div>
-          <div className="ml-auto text-right">
-            <p className="text-xs text-muted-foreground">Service fee</p>
-            <p className="font-bold text-foreground">GH₵{serviceFee}</p>
+          <div className="text-right">
+            <p className="text-[10px] text-muted-foreground">Pricing</p>
+            <p className="text-xs font-bold text-foreground">Dynamic</p>
           </div>
+        </div>
+
+        {/* Dynamic pricing card */}
+        <div className="rounded-2xl border-2 border-primary/20 bg-primary/5 p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <Zap className="h-4 w-4 text-primary fill-primary" />
+            <p className="text-sm font-bold text-primary">How pricing works</p>
+          </div>
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div className="rounded-xl bg-white p-3 shadow-card">
+              <p className="text-lg font-extrabold text-foreground">GH₵{BASE_FARE}</p>
+              <p className="text-[10px] text-muted-foreground">Base fare</p>
+            </div>
+            <div className="rounded-xl bg-white p-3 shadow-card">
+              <div className="flex items-center justify-center gap-1">
+                <Route className="h-3 w-3 text-primary" />
+                <p className="text-lg font-extrabold text-foreground">GH₵{PER_KM_RATE}</p>
+              </div>
+              <p className="text-[10px] text-muted-foreground">per km</p>
+            </div>
+            <div className="rounded-xl bg-white p-3 shadow-card">
+              <div className="flex items-center justify-center gap-1">
+                <Clock className="h-3 w-3 text-primary" />
+                <p className="text-lg font-extrabold text-foreground">GH₵{PER_MIN_RATE}</p>
+              </div>
+              <p className="text-[10px] text-muted-foreground">per min</p>
+            </div>
+          </div>
+          <p className="mt-2 text-center text-[11px] text-muted-foreground">
+            Min. GH₵{MIN_FARE} · Meter runs from pickup to delivery · Pay cash on arrival
+          </p>
         </div>
 
         {/* Your details */}
@@ -218,22 +251,25 @@ const ServiceRequestPage = () => {
               value={pickupAddress} onChange={setPickupAddress}
               placeholder="e.g. Accra Mall, East Legon" icon={MapPin}
             />
+            <div className="flex justify-center">
+              <div className="h-6 w-px border-l-2 border-dashed border-border" />
+            </div>
             <Field
-              label={serviceType === "errand" ? "Deliver to (your location)" : "Delivery Address (your location)"}
+              label={serviceType === "errand" ? "Deliver to (your location)" : "Delivery Address"}
               value={deliveryAddress} onChange={setDeliveryAddress}
               placeholder="e.g. 12 Oxford St, Osu" icon={MapPin}
             />
           </div>
         </SectionCard>
 
-        {/* Service-specific fields */}
+        {/* Service-specific */}
         {serviceType === "errand" && (
           <SectionCard>
             <SectionTitle icon={StickyNote}>Errand Details</SectionTitle>
             <div className="space-y-3">
               <Field label="What do you need done?" value={errandTask} onChange={setErrandTask}
                 placeholder="e.g. Buy 2kg tomatoes, 1 onion and 500ml oil from the market…" rows={3} />
-              <Field label="Budget (GH₵) — how much to spend" value={errandBudget} onChange={setErrandBudget} placeholder="e.g. 50" type="number" />
+              <Field label="Budget (GH₵) — how much to spend on items" value={errandBudget} onChange={setErrandBudget} placeholder="e.g. 50" type="number" />
             </div>
           </SectionCard>
         )}
@@ -243,13 +279,13 @@ const ServiceRequestPage = () => {
             <SectionTitle icon={StickyNote}>Parcel Details</SectionTitle>
             <div className="space-y-3">
               <Field label="What are you sending?" value={parcelDesc} onChange={setParcelDesc}
-                placeholder="e.g. Documents in an envelope, small gift box…" rows={2} />
+                placeholder="e.g. Documents in envelope, small gift…" rows={2} />
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">Weight estimate</label>
                 <div className="flex gap-2">
                   {["light", "medium", "heavy"].map((w) => (
                     <button key={w} onClick={() => setParcelWeight(w)}
-                      className={`flex-1 rounded-xl border-2 py-2 text-xs font-semibold capitalize transition-all ${parcelWeight === w ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>
+                      className={`flex-1 rounded-xl border-2 py-2 text-xs font-semibold transition-all ${parcelWeight === w ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>
                       {w === "light" ? "<1kg" : w === "medium" ? "1–5kg" : "5kg+"}
                     </button>
                   ))}
@@ -266,13 +302,13 @@ const ServiceRequestPage = () => {
             <SectionTitle icon={StickyNote}>Package Details</SectionTitle>
             <div className="space-y-3">
               <Field label="What's in the package?" value={packageDesc} onChange={setPackageDesc}
-                placeholder="e.g. Laptop in original box, bedside table…" rows={2} />
+                placeholder="e.g. Laptop in box, bedside table…" rows={2} />
               <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">Package size</label>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Size</label>
                 <div className="flex gap-2">
                   {["small", "medium", "large"].map((s) => (
                     <button key={s} onClick={() => setPackageSize(s)}
-                      className={`flex-1 rounded-xl border-2 py-2 text-[11px] font-semibold capitalize transition-all ${packageSize === s ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>
+                      className={`flex-1 rounded-xl border-2 py-2 text-xs font-semibold transition-all ${packageSize === s ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>
                       {s === "small" ? "Small" : s === "medium" ? "Medium" : "Large"}
                     </button>
                   ))}
@@ -280,7 +316,7 @@ const ServiceRequestPage = () => {
               </div>
               <div className="flex items-center gap-3 rounded-xl border border-border p-3">
                 <input type="checkbox" id="fragile" checked={isFragile} onChange={(e) => setIsFragile(e.target.checked)} className="h-4 w-4 accent-primary cursor-pointer" />
-                <label htmlFor="fragile" className="text-sm font-medium text-foreground cursor-pointer">⚠️ Fragile — handle with care</label>
+                <label htmlFor="fragile" className="text-sm font-medium cursor-pointer">⚠️ Fragile — handle with care</label>
               </div>
               <Field label="Recipient Name" value={recipientName} onChange={setRecipientName} placeholder="Who receives it?" icon={User} />
               <Field label="Recipient Phone" value={recipientPhone} onChange={setRecipientPhone} placeholder="024 XXX XXXX" type="tel" icon={Phone} />
@@ -294,7 +330,7 @@ const ServiceRequestPage = () => {
             <div className="space-y-3">
               <Field label="Pharmacy name (optional — leave blank for nearest)" value={pharmacyName} onChange={setPharmacyName} placeholder="e.g. Ernest Chemist, Osu" icon={MapPin} />
               <Field label="Medications / Items needed" value={medications} onChange={setMedications}
-                placeholder="e.g. Paracetamol 500mg x2, Amoxicillin 250mg x1 capsules…" rows={4} />
+                placeholder="e.g. Paracetamol 500mg x2, Amoxicillin 250mg x1…" rows={4} />
             </div>
           </SectionCard>
         )}
@@ -305,14 +341,6 @@ const ServiceRequestPage = () => {
           <Field label="" value={notes} onChange={setNotes} placeholder="Any extra instructions for the rider…" rows={2} />
         </SectionCard>
 
-        {/* Summary */}
-        <SectionCard>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Service fee</span>
-            <span className="text-xl font-extrabold text-primary">GH₵{serviceFee}</span>
-          </div>
-          <p className="mt-1 text-[11px] text-muted-foreground">Pay cash on delivery</p>
-        </SectionCard>
       </div>
 
       {/* CTA */}
@@ -324,9 +352,11 @@ const ServiceRequestPage = () => {
             className="w-full rounded-2xl bg-primary py-6 text-base font-bold text-white shadow-warm hover:scale-[1.01] active:scale-95 disabled:opacity-60"
           >
             {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <span className="mr-2">{svcDef.icon}</span>}
-            {loading ? "Submitting…" : `Find a Rider — GH₵${serviceFee}`}
+            {loading ? "Submitting…" : `Find a Rider`}
           </Button>
-          <p className="mt-1.5 text-center text-[11px] text-muted-foreground">Pay cash when delivered</p>
+          <p className="mt-1.5 text-center text-[11px] text-muted-foreground">
+            Price runs from pickup — pay cash on delivery
+          </p>
         </div>
       </div>
     </div>
