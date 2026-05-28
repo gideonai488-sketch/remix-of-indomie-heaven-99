@@ -1,0 +1,51 @@
+Customer App — Expo Build Prompt
+Build a production-ready Expo SDK 51+ React Native app in TypeScript called Campus Delivery (Customer).
+
+Stack
+expo-router, NativeWind, @supabase/supabase-js, @tanstack/react-query, expo-location, expo-notifications, expo-image-picker, react-native-maps, zustand (persisted cart), zod + react-hook-form.
+
+Supabase init
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { createClient } from '@supabase/supabase-js'
+
+export const supabase = createClient(
+  process.env.EXPO_PUBLIC_SUPABASE_URL!,
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+  { auth: { storage: AsyncStorage, autoRefreshToken: true, persistSession: true, detectSessionInUrl: false } }
+)
+.env:
+
+EXPO_PUBLIC_SUPABASE_URL=https://cgadnsuyezixjdrjkbvb.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNnYWRuc3V5ZXppeGpkcmprYnZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4MjI0OTgsImV4cCI6MjA5NTM5ODQ5OH0.kePPhpHopt1Ks5MjnjTQLyAPXwsGnAVGx8Xv2HMBuGY
+Screens
+(auth)/welcome, (auth)/login, (auth)/signup
+(tabs)/home — categories carousel, featured items (read from categories, items)
+(tabs)/orders — own orders with realtime status
+(tabs)/parcels — own parcel orders
+(tabs)/wallet — wallets.balance
+(tabs)/profile — edit profiles row (full_name, phone, campus_name, hostel_name, room_number, avatar_url)
+category/[id], item/[id], cart, checkout
+parcel/new — pickup + dropoff map pickers
+order/[id] — live status, rider info, map with rider position from driver_locations, OTP visible to customer
+After login
+Ensure profile exists (trigger auto-creates it).
+Register Expo push token:
+const token = (await Notifications.getExpoPushTokenAsync()).data
+await supabase.from('push_tokens').upsert({ user_id, token, platform: Platform.OS })
+Edge function call
+const { data, error } = await supabase.functions.invoke('create-order', {
+  body: { items: cart, delivery_address, delivery_latitude, delivery_longitude, delivery_note }
+})
+Realtime
+supabase.channel(`order:${id}`)
+  .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${id}` }, p => setOrder(p.new))
+  .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'driver_locations', filter: `rider_id=eq.${riderId}` }, p => setLoc(p.new))
+  .subscribe()
+Reviews
+After delivery: insert into reviews (order_id or parcel_order_id, rider_id, rating 1-5, comment).
+
+Design
+Primary #FF6B35. Rounded-xl cards, large tap targets, skeletons, empty states, react-native-toast-message.
+
+Deliverables
+All screens above, react-query hooks under src/api/*, generated Supabase types, auth guard, push token registration, cart persistence.

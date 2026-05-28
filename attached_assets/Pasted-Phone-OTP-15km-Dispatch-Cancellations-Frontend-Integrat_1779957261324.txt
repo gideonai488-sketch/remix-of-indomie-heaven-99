@@ -1,0 +1,49 @@
+Phone OTP + 15km Dispatch + Cancellations — Frontend Integration
+1. Phone OTP signup (Prelude SMS)
+Both edge functions are PUBLIC (no JWT required).
+
+// Step 1: request code
+await supabase.functions.invoke('send-otp', { body: { phone: '+2348012345678' } });
+
+// Step 2: verify code (call AFTER user is signed in to also flip profiles.phone_verified)
+const { data, error } = await supabase.functions.invoke('verify-otp', {
+  body: { phone: '+2348012345678', code: '123456' },
+});
+Recommended signup flow:
+
+Collect phone -> send-otp
+Show 6-digit input -> verify-otp (unauthenticated OK)
+After verification, create the auth user with supabase.auth.signUp({ email, password, options: { data: { full_name, phone } } })
+Re-call verify-otp once after signup to mark profiles.phone_verified = true.
+Rate limit: max 3 sends / 10 min / phone. Max 5 verify attempts / code. Code expires in 10 min.
+
+2. Rider App — Job offers (15km radius, accept/decline)
+When a customer creates an order, dispatch-rider finds the 5 nearest verified online riders within 15km and inserts rows in rider_job_offers (status pending, expires in 60s). Each candidate also receives a notification.
+
+Subscribe to incoming offers:
+
+supabase.channel('my-offers')
+  .on('postgres_changes', {
+    event: 'INSERT', schema: 'public', table: 'rider_job_offers',
+    filter: `rider_id=eq.${riderId}`,
+  }, ({ new: offer }) => showOfferModal(offer))
+  .subscribe();
+Accept:
+
+await supabase.functions.invoke('accept-delivery', {
+  body: { offer_id, order_id }, // or parcel_order_id
+});
+Decline (auto re-dispatches to next nearest):
+
+await supabase.functions.invoke('decline-offer', {
+  body: { offer_id, reason: 'too far' },
+});
+If no riders are online within 15km, the order stays in searching_rider — show a "Looking for riders…" state on the customer side and re-trigger dispatch periodically (or via admin).
+
+3. Cancellations
+await supabase.functions.invoke('cancel-order', {
+  body: { order_id, reason: 'Changed my mind' },
+});
+Server: flips order status to cancelled, expires all pending offers, logs to order_cancellations, notifies the customer. The audit row exposes cancelled_by_role (customer/rider/admin).
+
+Admin dashboard: query order_cancellations with joins to surface cancellation analytics.
