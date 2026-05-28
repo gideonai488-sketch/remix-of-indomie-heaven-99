@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,7 +20,7 @@ const SectionTitle = ({ icon: Icon, children }: { icon: React.ElementType; child
 );
 
 const CheckoutPage = () => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { items, totalPrice, clearCart } = useCart();
   const navigate = useNavigate();
 
@@ -30,6 +30,7 @@ const CheckoutPage = () => {
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const orderPlacedRef = useRef(false);
 
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -37,8 +38,11 @@ const CheckoutPage = () => {
   const deliveryFee = 0;
   const finalTotal = totalPrice;
 
-  useEffect(() => { if (!user) navigate("/auth", { replace: true }); }, [user, navigate]);
-  useEffect(() => { if (user && items.length === 0) navigate("/", { replace: true }); }, [user, items.length, navigate]);
+  useEffect(() => { if (!authLoading && !user) navigate("/auth", { replace: true }); }, [authLoading, user, navigate]);
+  useEffect(() => {
+    if (orderPlacedRef.current) return;
+    if (user && items.length === 0) navigate("/", { replace: true });
+  }, [user, items.length, navigate]);
 
   useEffect(() => {
     if (!user || dataLoaded) return;
@@ -133,6 +137,7 @@ const CheckoutPage = () => {
         body: { order_id: order.id },
       }).catch(() => {}); // non-fatal if edge fn fails
 
+      orderPlacedRef.current = true;
       navigate(`/track/${order.id}?type=food`, { replace: true });
       clearCart();
       toast.success("Order placed! Finding you a rider… 🏍️");

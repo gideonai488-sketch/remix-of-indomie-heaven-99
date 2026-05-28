@@ -170,6 +170,7 @@ const MapView = ({
   const animFrameRef = useRef<number>(0);
   const progressRef = useRef(0);
   const [mapFailed, setMapFailed] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
   const gpsUsedRef = useRef(false);
 
   // Build map — rebuilds once when GPS coords arrive
@@ -208,6 +209,7 @@ const MapView = ({
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
 
     map.on("load", async () => {
+      setMapReady(true);
       // Pickup: geocode address
       let pickup = (await geocode(pickupAddress)) ?? [ACCRA[0] - 0.02, ACCRA[1] - 0.01] as [number, number];
       if (!isFinite(pickup[0]) || !isFinite(pickup[1])) pickup = [ACCRA[0] - 0.02, ACCRA[1] - 0.01];
@@ -312,8 +314,17 @@ const MapView = ({
 
   return (
     <div className="relative w-full overflow-hidden rounded-3xl shadow-lg" style={{ height: 260 }}>
-      {/* Map canvas — hidden (not removed) when failed so ref stays valid */}
+      {/* Map canvas */}
       <div ref={containerRef} className="absolute inset-0" style={{ opacity: mapFailed ? 0 : 1 }}/>
+
+      {/* Loading shimmer while map tiles load */}
+      {!mapReady && !mapFailed && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2"
+          style={{ background: "linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%)" }}>
+          <div className="text-4xl animate-bounce">🏍️</div>
+          <p className="text-white/70 text-xs font-semibold">Loading map…</p>
+        </div>
+      )}
 
       {/* Fallback when map can't load */}
       {mapFailed && (
@@ -790,14 +801,22 @@ const TrackingPage = () => {
         {order.status==="pending" && (
           <button
             onClick={async () => {
-              const { error } = await supabase.functions.invoke("cancel-order", {
-                body: { order_id: id, reason: "Customer cancelled" },
-              });
-              if (error) {
-                toast.error("Failed to cancel order");
-              } else {
+              try {
+                const { error: fnErr } = await supabase.functions.invoke("cancel-order", {
+                  body: { order_id: id, reason: "Customer cancelled" },
+                });
+                if (fnErr) {
+                  // Edge function unavailable — update status directly
+                  const { error: dbErr } = await (supabase as any)
+                    .from("orders")
+                    .update({ status: "cancelled" })
+                    .eq("id", id);
+                  if (dbErr) throw dbErr;
+                }
                 toast("Order cancelled.");
-                navigate(-1);
+                navigate("/orders", { replace: true });
+              } catch {
+                toast.error("Could not cancel order — please try again.");
               }
             }}
             className="w-full rounded-2xl border border-red-200 py-3 text-sm font-semibold text-red-500 hover:bg-red-50 transition-colors"
