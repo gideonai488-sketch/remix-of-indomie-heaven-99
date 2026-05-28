@@ -100,9 +100,10 @@ const CheckoutPage = () => {
       if (orderErr) throw orderErr;
 
       // 2. Insert order items
+      const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
       const orderItems = items.map((ci) => ({
         order_id: order.id,
-        item_id: ci.item.id,
+        ...(isUuid(ci.item.id) ? { item_id: ci.item.id } : {}),
         item_name: ci.item.name,
         quantity: ci.quantity,
         price: ci.item.price,
