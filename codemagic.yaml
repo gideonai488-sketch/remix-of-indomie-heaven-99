@@ -84,30 +84,26 @@ workflows:
 
       - name: Set versionCode and versionName
         script: |
-          # Offset by 10 so we're always well clear of manually-uploaded codes.
-          # CM_BUILD_NUMBER=1 → versionCode 11, build 2 → 12, etc.
+          # Offset by 10 — build #1 → versionCode 11, build #2 → 12, etc.
           BUILD_NUM=$(( ${CM_BUILD_NUMBER:-1} + 10 ))
           VERSION="1.0.${BUILD_NUM}"
           GRADLE="artifacts/food-ordering/android/app/build.gradle"
 
-          echo "=== BEFORE ==="
-          grep -n "versionCode\|versionName" "$GRADLE"
+          echo "=== BEFORE ===" && grep -n "versionCode\|versionName" "$GRADLE"
 
-          # Use Python — immune to whitespace/quoting differences in Gradle files
-          python3 - <<PYEOF
-import re, sys
-path = "$GRADLE"
-with open(path) as f:
-    src = f.read()
-src = re.sub(r'(versionCode\s+)\S+', r'\g<1>${BUILD_NUM}', src)
-src = re.sub(r'(versionName\s+")[^"]*(")', r'\g<1>${VERSION}\2', src)
-with open(path, 'w') as f:
-    f.write(src)
-PYEOF
-
-          echo "=== AFTER ==="
-          grep -n "versionCode\|versionName" "$GRADLE"
-          echo "→ versionCode: ${BUILD_NUM}  versionName: ${VERSION}"
+          export _GRADLE="$GRADLE" _VC="$BUILD_NUM" _VN="$VERSION"
+          python3 -c "
+import re, os
+path = os.environ['_GRADLE']
+vc   = os.environ['_VC']
+vn   = os.environ['_VN']
+src  = open(path).read()
+src  = re.sub(r'(versionCode\s+)\S+',         'versionCode '  + vc,       src)
+src  = re.sub(r'(versionName\s+\")[^\"]+\"',  'versionName \"' + vn + '\"', src)
+open(path, 'w').write(src)
+print('versionCode =>', vc, '  versionName =>', vn)
+"
+          echo "=== AFTER ===" && grep -n "versionCode\|versionName" "$GRADLE"
 
       - name: Decode keystore
         script: |
