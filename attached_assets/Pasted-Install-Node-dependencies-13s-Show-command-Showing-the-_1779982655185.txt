@@ -1,0 +1,58 @@
+Install Node dependencies
+13s
+
+
+
+Show command
+Showing the last 50 lines. Click this button to load the full log
+Progress: resolved 735, reused 0, downloaded 735, added 557
+Progress: resolved 735, reused 0, downloaded 735, added 718
+Progress: resolved 735, reused 0, downloaded 735, added 734
+Progress: resolved 735, reused 0, downloaded 735, added 735, done
+
+devDependencies:
++ prettier 3.8.3
++ typescript 5.9.3
+
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; [ "$CI" = "true" ] && exit 0; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exit 1 ;; esac'
+. preinstall: Done
+[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: esbuild@0.27.3
+
+Run "pnpm approve-builds" to pick which dependencies should be allowed to run scripts.
+
+
+Build failed :|
+Step 3 script `Install Node dependencies` exited with status code 1
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+Scope: all 9 workspace projects
+? Verifying lockfile against supply-chain policies (740 entries)...
+✓ Lockfile passes supply-chain policies (740 entries in 3.6s)
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +735
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 735, reused 0, downloaded 205, added 97
+Progress: resolved 735, reused 0, downloaded 420, added 202
+Progress: resolved 735, reused 0, downloaded 558, added 269
+Progress: resolved 735, reused 0, downloaded 618, added 290
+Progress: resolved 735, reused 0, downloaded 697, added 313
+Progress: resolved 735, reused 0, downloaded 735, added 557
+Progress: resolved 735, reused 0, downloaded 735, added 718
+Progress: resolved 735, reused 0, downloaded 735, added 734
+Progress: resolved 735, reused 0, downloaded 735, added 735, done
+
+devDependencies:
++ prettier 3.8.3
++ typescript 5.9.3
+
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; [ "$CI" = "true" ] && exit 0; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exit 1 ;; esac'
+. preinstall: Done
+[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: esbuild@0.27.3
+
+Run "pnpm approve-builds" to pick which dependencies should be allowed to run scripts.
+
+
+Build failed :|
+Step 3 script `Install Node dependencies` exited with status code 1
+
+Bu
