@@ -88,3 +88,37 @@ BEGIN
       WITH CHECK (status = 'cancelled');
   END IF;
 END $$;
+
+-- ============================================================
+-- Promo Banners: admin-managed promotional videos
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.promo_banners (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  title TEXT NOT NULL,
+  subtitle TEXT,
+  cta TEXT,
+  file_path TEXT NOT NULL,
+  bucket TEXT DEFAULT 'promo-videos',
+  is_active BOOLEAN DEFAULT true,
+  sort_order INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Trigger
+CREATE TRIGGER IF NOT EXISTS update_promo_banners_updated_at
+  BEFORE UPDATE ON promo_banners
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- RLS
+ALTER TABLE promo_banners ENABLE ROW LEVEL SECURITY;
+
+-- Everyone can read active banners
+CREATE POLICY IF NOT EXISTS "Anyone can read active promo banners"
+  ON promo_banners FOR SELECT
+  USING (is_active = true);
+
+-- Authenticated users (admins) can manage
+CREATE POLICY IF NOT EXISTS "Admins can manage promo banners"
+  ON promo_banners FOR ALL
+  USING (auth.uid() IS NOT NULL);
