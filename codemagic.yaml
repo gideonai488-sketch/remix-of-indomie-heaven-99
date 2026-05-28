@@ -84,14 +84,30 @@ workflows:
 
       - name: Set versionCode and versionName
         script: |
-          # Offset by 1 because version code 1 was already uploaded manually.
-          # Build #1 → versionCode 2, build #2 → versionCode 3, etc.
-          BUILD_NUM=$(( ${CM_BUILD_NUMBER:-1} + 1 ))
+          # Offset by 10 so we're always well clear of manually-uploaded codes.
+          # CM_BUILD_NUMBER=1 → versionCode 11, build 2 → 12, etc.
+          BUILD_NUM=$(( ${CM_BUILD_NUMBER:-1} + 10 ))
           VERSION="1.0.${BUILD_NUM}"
           GRADLE="artifacts/food-ordering/android/app/build.gradle"
-          sed -i "s/versionCode [0-9]*/versionCode ${BUILD_NUM}/" "$GRADLE"
-          sed -i "s/versionName \"[^\"]*\"/versionName \"${VERSION}\"/" "$GRADLE"
-          echo "→ versionName: ${VERSION}  versionCode: ${BUILD_NUM}"
+
+          echo "=== BEFORE ==="
+          grep -n "versionCode\|versionName" "$GRADLE"
+
+          # Use Python — immune to whitespace/quoting differences in Gradle files
+          python3 - <<PYEOF
+import re, sys
+path = "$GRADLE"
+with open(path) as f:
+    src = f.read()
+src = re.sub(r'(versionCode\s+)\S+', r'\g<1>${BUILD_NUM}', src)
+src = re.sub(r'(versionName\s+")[^"]*(")', r'\g<1>${VERSION}\2', src)
+with open(path, 'w') as f:
+    f.write(src)
+PYEOF
+
+          echo "=== AFTER ==="
+          grep -n "versionCode\|versionName" "$GRADLE"
+          echo "→ versionCode: ${BUILD_NUM}  versionName: ${VERSION}"
 
       - name: Decode keystore
         script: |
