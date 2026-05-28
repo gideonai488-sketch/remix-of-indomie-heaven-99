@@ -438,7 +438,17 @@ const TrackingPage = () => {
         {/* Cancel */}
         {order.status==="pending" && (
           <button
-            onClick={async()=>{ await supabase.from("orders").update({status:"cancelled"}).eq("id",id); toast("Order cancelled."); navigate(-1); }}
+            onClick={async () => {
+              const { error } = await supabase.functions.invoke("cancel-order", {
+                body: { order_id: id, reason: "Customer cancelled" },
+              });
+              if (error) {
+                toast.error("Failed to cancel order");
+              } else {
+                toast("Order cancelled.");
+                navigate(-1);
+              }
+            }}
             className="w-full rounded-2xl border border-red-200 py-3 text-sm font-semibold text-red-500 hover:bg-red-50 transition-colors"
           >
             Cancel Order
