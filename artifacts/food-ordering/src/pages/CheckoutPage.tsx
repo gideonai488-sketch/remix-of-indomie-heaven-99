@@ -34,8 +34,8 @@ const CheckoutPage = () => {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
 
-  const [deliveryFee] = useState(10);
-  const finalTotal = totalPrice + deliveryFee;
+  const deliveryFee = 0;
+  const finalTotal = totalPrice;
 
   useEffect(() => { if (!user) navigate("/auth", { replace: true }); }, [user, navigate]);
   useEffect(() => { if (user && items.length === 0) navigate("/", { replace: true }); }, [user, items.length, navigate]);
@@ -106,7 +106,6 @@ const CheckoutPage = () => {
         ...(isUuid(ci.item.id) ? { item_id: ci.item.id } : {}),
         item_name: ci.item.name,
         quantity: ci.quantity,
-        unit_price: Number(ci.item.price),
         price: Number(ci.item.price),
       }));
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
@@ -262,16 +261,8 @@ const CheckoutPage = () => {
 
         {/* Totals */}
         <SectionCard className="space-y-2.5">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Subtotal ({items.length} item{items.length !== 1 && "s"})</span>
-            <span className="font-medium">GH₵{totalPrice.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Delivery fee</span>
-            <span className="font-medium">GH₵{deliveryFee.toFixed(2)}</span>
-          </div>
-          <div className="flex items-end justify-between border-t border-border pt-3">
-            <span className="font-bold text-foreground">Total</span>
+          <div className="flex items-end justify-between">
+            <span className="font-bold text-foreground">Total ({items.length} item{items.length !== 1 && "s"})</span>
             <span className="text-2xl font-extrabold text-primary">GH₵{finalTotal.toFixed(2)}</span>
           </div>
           <p className="text-center text-xs text-muted-foreground">

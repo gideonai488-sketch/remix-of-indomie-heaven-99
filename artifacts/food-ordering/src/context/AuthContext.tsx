@@ -117,37 +117,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signInWithPhone = async (phone: string, password: string) => {
-    const cleaned = normalizePhone(phone);
-    const variants = [cleaned, phone.trim()];
-    let foundEmail: string | null = null;
+    const input = phone.trim();
 
-    for (const variant of variants) {
-      const { data } = await supabase
-        .from("profiles")
-        .select("email")
-        .eq("phone", variant)
-        .maybeSingle();
-      if (data?.email) { foundEmail = data.email; break; }
+    // If user typed their email directly, use it
+    if (input.includes("@")) {
+      const { error } = await supabase.auth.signInWithPassword({ email: input.toLowerCase(), password });
+      return { error: error ? new Error(error.message) : null };
     }
 
-    if (!foundEmail) {
-      const fakeEmail = `${cleaned.replace("+", "")}@speedup.app`;
-      const { data } = await supabase
-        .from("profiles")
-        .select("email")
-        .eq("email", fakeEmail)
-        .maybeSingle();
-      if (data?.email) foundEmail = data.email;
+    const cleaned = normalizePhone(input);
+    const syntheticEmail = `${cleaned.replace("+", "")}@speedup.app`;
+
+    // Try the synthetic email first (works for phone-only accounts, no DB lookup needed)
+    const { error: syntheticErr } = await supabase.auth.signInWithPassword({
+      email: syntheticEmail,
+      password,
+    });
+    if (!syntheticErr) return { error: null };
+
+    // If it's a credentials error the account used a real email — try profiles lookup
+    // (only works if RLS allows it; may return empty if not)
+    if (syntheticErr.message?.toLowerCase().includes("invalid")) {
+      const variants = [cleaned, input];
+      for (const variant of variants) {
+        const { data } = await supabase
+          .from("profiles")
+          .select("email")
+          .eq("phone", variant)
+          .maybeSingle();
+        if (data?.email && data.email !== syntheticEmail) {
+          const { error } = await supabase.auth.signInWithPassword({ email: data.email, password });
+          return { error: error ? new Error(error.message) : null };
+        }
+      }
+      return { error: new Error("Wrong password. Try again.") };
     }
 
-    if (!foundEmail && phone.includes("@")) foundEmail = phone.trim().toLowerCase();
-
-    if (!foundEmail) {
-      return { error: new Error("No account found with this phone number. Please sign up first.") };
-    }
-
-    const { error } = await supabase.auth.signInWithPassword({ email: foundEmail, password });
-    return { error: error ? new Error(error.message) : null };
+    // Account not found at all
+    return { error: new Error("No account found. Please sign up first.") };
   };
 
   const signOut = async () => { await supabase.auth.signOut(); };
