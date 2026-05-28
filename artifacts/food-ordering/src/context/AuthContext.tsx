@@ -119,24 +119,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInWithPhone = async (phone: string, password: string) => {
     const input = phone.trim();
 
+    const trySignIn = async (email: string) => {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (!error) return { error: null };
+      // "Email not confirmed" — Supabase requires confirmation; guide user
+      if (error.message?.toLowerCase().includes("not confirmed") || error.message?.toLowerCase().includes("email_not_confirmed")) {
+        return { error: new Error("Please confirm your email first — check your inbox for a message from SpeedUp, or ask your admin to disable email confirmation in Supabase.") };
+      }
+      return { error };
+    };
+
     // If user typed their email directly, use it
     if (input.includes("@")) {
-      const { error } = await supabase.auth.signInWithPassword({ email: input.toLowerCase(), password });
-      return { error: error ? new Error(error.message) : null };
+      const res = await trySignIn(input.toLowerCase());
+      return { error: res.error ? new Error(res.error.message) : null };
     }
 
     const cleaned = normalizePhone(input);
     const syntheticEmail = `${cleaned.replace("+", "")}@speedup.app`;
 
-    // Try the synthetic email first (works for phone-only accounts, no DB lookup needed)
-    const { error: syntheticErr } = await supabase.auth.signInWithPassword({
-      email: syntheticEmail,
-      password,
-    });
+    // Try the synthetic email first (works for phone-only accounts)
+    const { error: syntheticErr } = await supabase.auth.signInWithPassword({ email: syntheticEmail, password });
     if (!syntheticErr) return { error: null };
 
-    // If it's a credentials error the account used a real email — try profiles lookup
-    // (only works if RLS allows it; may return empty if not)
+    // Email-not-confirmed on synthetic account — surface it clearly
+    if (syntheticErr.message?.toLowerCase().includes("not confirmed") || syntheticErr.message?.toLowerCase().includes("email_not_confirmed")) {
+      return { error: new Error("Account not confirmed. Go to Supabase → Authentication → Email → disable 'Confirm email', then try again.") };
+    }
+
+    // Wrong password / account used a real email — try profiles lookup
     if (syntheticErr.message?.toLowerCase().includes("invalid")) {
       const variants = [cleaned, input];
       for (const variant of variants) {
@@ -146,15 +157,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .eq("phone", variant)
           .maybeSingle();
         if (data?.email && data.email !== syntheticEmail) {
-          const { error } = await supabase.auth.signInWithPassword({ email: data.email, password });
-          return { error: error ? new Error(error.message) : null };
+          const res = await trySignIn(data.email);
+          return { error: res.error ? new Error(res.error.message) : null };
         }
       }
       return { error: new Error("Wrong password. Try again.") };
     }
 
-    // Account not found — guide them to use email
-    return { error: new Error("Account not found. If you signed up with an email, use that to sign in.") };
+    return { error: new Error("Account not found. If you signed up with an email, enter that instead.") };
   };
 
   const signOut = async () => { await supabase.auth.signOut(); };

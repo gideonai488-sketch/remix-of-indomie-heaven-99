@@ -58,17 +58,6 @@ workflows:
         script: |
           pnpm --filter @workspace/food-ordering run build:cap
 
-      - name: Generate Android icons from owl icon
-        script: |
-          cd artifacts/food-ordering
-          # Generates all mipmap-* sizes from resources/icon.png (1024px source)
-          npx @capacitor/assets@latest generate \
-            --iconBackgroundColor '#ef4444' \
-            --iconBackgroundColorDark '#ef4444' \
-            --splashBackgroundColor '#ffffff' \
-            --splashBackgroundColorDark '#121212' \
-            --android
-
       - name: Add Android platform (first time only)
         script: |
           cd artifacts/food-ordering
@@ -80,6 +69,18 @@ workflows:
         script: |
           cd artifacts/food-ordering
           npx cap sync android
+
+      - name: Generate Android icons from owl icon
+        script: |
+          cd artifacts/food-ordering
+          # Must run AFTER cap add + cap sync so android/ mipmap dirs exist
+          # Generates all mipmap-* sizes from resources/icon.png (1024px source)
+          npx @capacitor/assets@latest generate \
+            --iconBackgroundColor '#ef4444' \
+            --iconBackgroundColorDark '#ef4444' \
+            --splashBackgroundColor '#ffffff' \
+            --splashBackgroundColorDark '#121212' \
+            --android
 
       - name: Set versionCode and versionName
         script: |
