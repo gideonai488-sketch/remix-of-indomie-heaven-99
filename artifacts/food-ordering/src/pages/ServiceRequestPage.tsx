@@ -147,6 +147,7 @@ const ServiceRequestPage = () => {
         .from("orders")
         .insert({
           user_id: user.id,
+          customer_id: user.id,
           total_amount: BASE_FARE,
           delivery_fee: 0,
           payment_method: "cash_on_delivery",
