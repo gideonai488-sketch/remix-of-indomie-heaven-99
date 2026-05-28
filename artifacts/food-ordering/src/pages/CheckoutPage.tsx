@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, MapPin, Loader2, Phone, User,
-  ShoppingBag, StickyNote, ChevronRight, Plus,
+  ShoppingBag, StickyNote,
   Banknote, Smartphone, CheckCircle2,
 } from "lucide-react";
 
