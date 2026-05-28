@@ -202,49 +202,55 @@ const CheckoutPage = () => {
         {/* Delivery address */}
         <SectionCard>
           <SectionTitle icon={MapPin}>Delivery Address</SectionTitle>
-          {!dataLoaded ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {addresses.map((a) => (
-                <button key={a.id}
-                  onClick={() => { setSelectedAddr(a.id); setManualAddress(""); }}
-                  className={`flex w-full items-center gap-3 rounded-xl border-2 p-3.5 text-left transition-all ${
-                    selectedAddr === a.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"
-                  }`}>
-                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${selectedAddr === a.id ? "bg-primary text-white" : "bg-muted text-muted-foreground"}`}>
-                    {selectedAddr === a.id ? <CheckCircle2 className="h-4 w-4" /> : <MapPin className="h-4 w-4" />}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold text-foreground">{a.label || "Address"}</span>
-                    <p className="truncate text-xs text-muted-foreground">{a.address_line1}, {a.city}</p>
-                  </div>
-                </button>
-              ))}
-
-              <div className={addresses.length > 0 ? "pt-1" : ""}>
-                {addresses.length > 0 && (
-                  <p className="mb-2 text-center text-xs text-muted-foreground">— or type a new address —</p>
+          <div className="space-y-3">
+            {/* Saved address quick-pick (compact chips) */}
+            {addresses.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {addresses.map((a) => (
+                  <button key={a.id}
+                    onClick={() => { setSelectedAddr(a.id); setManualAddress(""); }}
+                    className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${
+                      selectedAddr === a.id
+                        ? "border-primary bg-primary text-white"
+                        : "border-border bg-background text-muted-foreground hover:border-primary/40"
+                    }`}>
+                    <MapPin className="h-3 w-3" /> {a.label}
+                  </button>
+                ))}
+                {selectedAddr && (
+                  <button onClick={() => setSelectedAddr(null)}
+                    className="rounded-full border border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground hover:border-primary/40">
+                    Type instead
+                  </button>
                 )}
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <input value={manualAddress}
-                    onChange={(e) => { setManualAddress(e.target.value); if (e.target.value) setSelectedAddr(null); }}
-                    placeholder="Type delivery address…"
-                    className="w-full rounded-xl border border-border bg-background py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+            )}
+
+            {/* Show selected address or free-text input */}
+            {selectedAddr ? (
+              <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
+                <MapPin className="h-4 w-4 shrink-0 text-primary" />
+                <div className="min-w-0">
+                  {(() => { const a = addresses.find(x => x.id === selectedAddr); return (
+                    <>
+                      <p className="text-sm font-semibold text-foreground">{a?.address_line1}</p>
+                      <p className="text-xs text-muted-foreground">{a?.city}</p>
+                    </>
+                  ); })()}
                 </div>
               </div>
-
-              {addresses.length === 0 && (
-                <button onClick={() => navigate("/profile")}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border p-3 text-xs font-semibold text-primary hover:border-primary/50 transition-colors">
-                  <Plus className="h-4 w-4" /> Save address to profile
-                </button>
-              )}
-            </div>
-          )}
+            ) : (
+              <div className="relative">
+                <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  value={manualAddress}
+                  onChange={(e) => setManualAddress(e.target.value)}
+                  placeholder="Enter street, area, landmark…"
+                  className="w-full rounded-xl border border-border bg-background py-3 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+            )}
+          </div>
         </SectionCard>
 
         {/* Pay on Delivery method */}
