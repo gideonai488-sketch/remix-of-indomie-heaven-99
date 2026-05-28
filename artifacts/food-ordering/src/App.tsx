@@ -16,6 +16,9 @@ const AuthPage = lazy(() => import("./pages/AuthPage"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const CheckoutPage = lazy(() => import("./pages/CheckoutPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const ServicesPage = lazy(() => import("./pages/ServicesPage"));
+const ServiceRequestPage = lazy(() => import("./pages/ServiceRequestPage"));
+const TrackingPage = lazy(() => import("./pages/TrackingPage"));
 
 const AdminLayout = lazy(() => import("./components/admin/AdminLayout"));
 const DashboardPage = lazy(() => import("./pages/admin/DashboardPage"));
@@ -60,6 +63,9 @@ const App = () => (
                 <Route path="/auth" element={<AuthPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/checkout" element={<CheckoutPage />} />
+                <Route path="/services" element={<ServicesPage />} />
+                <Route path="/service-request/:type" element={<ServiceRequestPage />} />
+                <Route path="/track/:id" element={<TrackingPage />} />
                 {showAdmin && (
                   <Route path="/admin" element={<AdminLayout />}>
                     <Route index element={<DashboardPage />} />

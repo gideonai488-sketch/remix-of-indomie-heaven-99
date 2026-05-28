@@ -5,12 +5,14 @@ import MenuSection from "@/components/MenuSection";
 import CartDrawer from "@/components/CartDrawer";
 import BottomNav from "@/components/BottomNav";
 import Footer from "@/components/Footer";
+import ServicesStrip from "@/components/ServicesStrip";
 
 const Index = () => {
   return (
     <div className="flex min-h-screen flex-col bg-background pb-16">
       <Header />
       <NetflixHero />
+      <ServicesStrip />
       <PromoBanner />
       <MenuSection />
       <Footer />

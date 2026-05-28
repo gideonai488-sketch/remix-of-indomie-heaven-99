@@ -1,4 +1,4 @@
-import { Home, UtensilsCrossed, ShoppingCart, User } from "lucide-react";
+import { Home, UtensilsCrossed, ShoppingCart, User, Zap } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -9,15 +9,15 @@ const BottomNav = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + "/");
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-primary/30 bg-primary/95 backdrop-blur-lg pb-[env(safe-area-inset-bottom)] shadow-warm">
-      <div className="mx-auto flex h-14 max-w-lg items-center justify-around px-2">
+      <div className="mx-auto flex h-14 max-w-lg items-center justify-around px-1">
         <button
           onClick={() => navigate("/")}
           className={`flex flex-1 flex-col items-center gap-0.5 text-[10px] font-semibold transition-colors ${
-            isActive("/") ? "text-accent" : "text-primary-foreground/60"
+            location.pathname === "/" ? "text-accent" : "text-primary-foreground/60"
           }`}
         >
           <Home className="h-5 w-5" />
@@ -31,7 +31,21 @@ const BottomNav = () => {
           }`}
         >
           <UtensilsCrossed className="h-5 w-5" />
-          Menu
+          Food
+        </button>
+
+        <button
+          onClick={() => navigate("/services")}
+          className={`flex flex-1 flex-col items-center gap-0.5 text-[10px] font-semibold transition-colors ${
+            isActive("/services") || isActive("/service-request") ? "text-accent" : "text-primary-foreground/60"
+          }`}
+        >
+          <div className="relative flex h-8 w-8 items-center justify-center rounded-full bg-accent/20 mb-[-2px]">
+            <Zap className="h-4 w-4 text-accent" />
+          </div>
+          <span className={isActive("/services") || isActive("/service-request") ? "text-accent" : "text-primary-foreground/60"}>
+            Services
+          </span>
         </button>
 
         <button

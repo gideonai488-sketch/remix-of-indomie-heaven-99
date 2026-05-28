@@ -1,12 +1,12 @@
 import { useNavigate } from "react-router-dom";
 import NotificationBell from "@/components/NotificationBell";
+import { Zap } from "lucide-react";
 
 const Header = () => {
   const navigate = useNavigate();
 
   return (
     <header className="sticky top-0 z-50 border-b border-primary/20 bg-primary/95 backdrop-blur-md shadow-warm">
-      {/* Top bar — Genesis Holdings */}
       <div className="border-b border-primary-foreground/10 bg-primary-foreground/5">
         <div className="container mx-auto flex items-center justify-center gap-2 px-4 py-1">
           <img src="/falcon-icon.png" alt="" className="h-4 w-4 rounded-sm object-cover" />
@@ -16,13 +16,13 @@ const Header = () => {
         </div>
       </div>
 
-      {/* Main header */}
       <div className="container mx-auto flex h-12 items-center justify-between px-4 md:h-14">
-        <button onClick={() => navigate("/")} className="flex items-center gap-2.5">
-          <img src="/falcon-icon.png" alt="Highest Bowls" className="h-8 w-8 rounded-md object-cover md:h-9 md:w-9" />
+        <button onClick={() => navigate("/")} className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-accent md:h-9 md:w-9">
+            <Zap className="h-5 w-5 fill-current text-white md:h-5 md:w-5" />
+          </div>
           <h1 className="font-display text-lg font-bold md:text-xl">
-            <span className="text-primary-foreground">Highest</span>{" "}
-            <span className="text-accent">Bowls</span>
+            <span className="text-primary-foreground">Speed</span><span className="text-accent">Up</span>
           </h1>
         </button>
         <NotificationBell />
