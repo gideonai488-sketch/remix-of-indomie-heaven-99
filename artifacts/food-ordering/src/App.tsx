@@ -57,6 +57,7 @@ const AdminLayout = lazy(() => import("./components/admin/AdminLayout"));
 const AdminDashboardPage = lazy(() => import("./pages/admin/DashboardPage"));
 const AdminOrdersPage = lazy(() => import("./pages/admin/OrdersPage"));
 const MenuManagementPage = lazy(() => import("./pages/admin/MenuManagementPage"));
+const BannersPage = lazy(() => import("./pages/admin/BannersPage"));
 const CustomersPage = lazy(() => import("./pages/admin/CustomersPage"));
 
 const queryClient = new QueryClient();
@@ -115,6 +116,7 @@ const App = () => (
                       <Route index element={<AdminDashboardPage />} />
                       <Route path="orders" element={<AdminOrdersPage />} />
                       <Route path="menu" element={<MenuManagementPage />} />
+                      <Route path="banners" element={<BannersPage />} />
                       <Route path="customers" element={<CustomersPage />} />
                     </Route>
                   )}
