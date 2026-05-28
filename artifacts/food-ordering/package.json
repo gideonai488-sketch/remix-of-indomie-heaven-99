@@ -1,13 +1,18 @@
 {
   "name": "@workspace/food-ordering",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "vite build --config vite.config.ts",
+    "build:cap": "BASE_PATH=/ PORT=3000 vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "cap:add": "npx cap add android",
+    "cap:sync": "npx cap sync android",
+    "cap:open": "npx cap open android",
+    "cap:icons": "npx @capacitor/assets generate --iconBackgroundColor '#ef4444' --iconBackgroundColorDark '#ef4444' --splashBackgroundColor '#ffffff' --splashBackgroundColorDark '#121212' --android"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -76,8 +81,12 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.4",
+    "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",
     "@capacitor/push-notifications": "^8.1.1",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2",
     "@supabase/supabase-js": "^2.106.2",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.15.1",

@@ -3,30 +3,29 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
+// In CI / Capacitor builds NODE_ENV=production and PORT/BASE_PATH may not be set.
+// We only enforce them in interactive dev-server mode.
+const isBuild = process.env.NODE_ENV === "production" ||
+  process.argv.some((a) => a === "build");
+
 const rawPort = process.env.PORT;
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
+if (!rawPort && !isBuild) {
+  throw new Error("PORT environment variable is required but was not provided.");
 }
-
-const port = Number(rawPort);
-
-if (Number.isNaN(port) || port <= 0) {
+const port = rawPort ? Number(rawPort) : 3000;
+if (rawPort && (Number.isNaN(port) || port <= 0)) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
 const basePath = process.env.BASE_PATH;
-
-if (!basePath) {
-  throw new Error(
-    "BASE_PATH environment variable is required but was not provided.",
-  );
+if (!basePath && !isBuild) {
+  throw new Error("BASE_PATH environment variable is required but was not provided.");
 }
+// Capacitor needs the app served from root ("/")
+const resolvedBase = basePath ?? "/";
 
 export default defineConfig({
-  base: basePath,
+  base: resolvedBase,
   plugins: [
     react(),
     runtimeErrorOverlay(),
@@ -61,9 +60,7 @@ export default defineConfig({
     strictPort: true,
     host: "0.0.0.0",
     allowedHosts: true,
-    fs: {
-      strict: true,
-    },
+    fs: { strict: true },
   },
   preview: {
     port,

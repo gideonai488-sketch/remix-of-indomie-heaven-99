@@ -1,0 +1,208 @@
+workflows:
+
+  # ─────────────────────────────────────────────
+  #  SpeedUp Android — Release AAB → Play Store
+  # ─────────────────────────────────────────────
+  android-release:
+    name: SpeedUp Android — Release AAB
+    max_build_duration: 60
+    instance_type: linux_x2
+
+    environment:
+      # ── Codemagic environment variable groups ──────────────────────────────
+      # Create these groups in Codemagic → Teams → Global variables & secrets
+      #
+      # Group "android_signing":
+      #   CM_KEYSTORE            base64-encoded .keystore file
+      #                          (openssl base64 -in speedup.keystore | pbcopy)
+      #   CM_KEYSTORE_PASSWORD   keystore password
+      #   CM_KEY_ALIAS           key alias (e.g. speedup-key)
+      #   CM_KEY_PASSWORD        key password
+      #
+      # Group "google_play":
+      #   GCLOUD_SERVICE_ACCOUNT_CREDENTIALS  JSON of your Play Store service account
+      #
+      # Group "supabase":
+      #   VITE_SUPABASE_URL
+      #   VITE_SUPABASE_PUBLISHABLE_KEY
+      #   VITE_SUPABASE_PROJECT_ID
+      # ──────────────────────────────────────────────────────────────────────
+      groups:
+        - android_signing
+        - google_play
+        - supabase
+
+      vars:
+        PACKAGE_NAME: "com.speedupp.app"
+        APP_NAME: "SpeedUp"
+        # Web build needs these so Vite doesn't throw
+        BASE_PATH: "/"
+        PORT: "3000"
+        NODE_ENV: "production"
+
+      node: 20.15.1
+      java: 17
+
+    # Trigger on semver tags  e.g.  git tag v1.0.3 && git push --tags
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: 'v[0-9]+\.[0-9]+\.[0-9]+'
+          include: true
+
+    scripts:
+
+      - name: Install pnpm
+        script: |
+          npm install -g pnpm@latest
+          pnpm --version
+
+      - name: Install Node dependencies
+        script: |
+          cd artifacts/food-ordering
+          pnpm install --frozen-lockfile
+
+      - name: Build web assets (Capacitor release build)
+        script: |
+          cd artifacts/food-ordering
+          pnpm run build:cap
+
+      - name: Generate Android icons & splash from resources/icon.png
+        script: |
+          cd artifacts/food-ordering
+          # @capacitor/assets reads resources/icon.png (1024×1024) and
+          # resources/splash.png and writes all mipmap/drawable sizes
+          npx @capacitor/assets@latest generate \
+            --iconBackgroundColor '#ef4444' \
+            --iconBackgroundColorDark '#ef4444' \
+            --splashBackgroundColor '#ffffff' \
+            --splashBackgroundColorDark '#121212' \
+            --android
+
+      - name: Add Android platform (first-time only)
+        script: |
+          cd artifacts/food-ordering
+          if [ ! -d "android" ]; then
+            echo "Adding Android platform..."
+            npx cap add android
+          else
+            echo "Android platform already present, skipping cap add."
+          fi
+
+      - name: Sync Capacitor → Android
+        script: |
+          cd artifacts/food-ordering
+          npx cap sync android
+
+      - name: Set versionCode and versionName
+        script: |
+          # CM_BUILD_NUMBER is auto-incremented by Codemagic (1, 2, 3, …)
+          BUILD_NUM=${CM_BUILD_NUMBER:-1}
+          # Strip leading 'v' from tag (v1.2.3 → 1.2.3)
+          VERSION="${CM_TAG:-1.0.0}"
+          VERSION="${VERSION#v}"
+
+          GRADLE="artifacts/food-ordering/android/app/build.gradle"
+          sed -i "s/versionCode [0-9]*/versionCode ${BUILD_NUM}/" "$GRADLE"
+          sed -i "s/versionName \"[^\"]*\"/versionName \"${VERSION}\"/" "$GRADLE"
+
+          echo "→ versionName: ${VERSION}  versionCode: ${BUILD_NUM}"
+
+      - name: Decode signing keystore
+        script: |
+          echo "$CM_KEYSTORE" | base64 --decode > /tmp/speedup-release.keystore
+          echo "Keystore decoded OK"
+
+      - name: Build release AAB
+        script: |
+          cd artifacts/food-ordering/android
+          chmod +x gradlew
+          ./gradlew bundleRelease \
+            -Pandroid.injected.signing.store.file=/tmp/speedup-release.keystore \
+            -Pandroid.injected.signing.store.password="$CM_KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$CM_KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$CM_KEY_PASSWORD" \
+            --stacktrace
+
+      - name: Verify AAB output
+        script: |
+          AAB="artifacts/food-ordering/android/app/build/outputs/bundle/release/app-release.aab"
+          if [ -f "$AAB" ]; then
+            echo "✅ AAB built: $(du -sh $AAB)"
+          else
+            echo "❌ AAB not found!"; exit 1
+          fi
+
+    # Files to collect after build
+    artifacts:
+      - artifacts/food-ordering/android/app/build/outputs/bundle/release/app-release.aab
+      - artifacts/food-ordering/android/app/build/outputs/mapping/release/mapping.txt
+
+    publishing:
+      email:
+        recipients:
+          - build@speedupp.app      # ← change to your email
+        notify:
+          success: true
+          failure: true
+
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal              # internal → alpha → beta → production
+        submit_as_draft: true        # set false to auto-publish
+
+
+  # ─────────────────────────────────────────────
+  #  SpeedUp Android — Debug APK (PR preview)
+  # ─────────────────────────────────────────────
+  android-debug:
+    name: SpeedUp Android — Debug APK
+    max_build_duration: 30
+    instance_type: linux_x2
+
+    environment:
+      groups:
+        - supabase
+      vars:
+        BASE_PATH: "/"
+        PORT: "3000"
+        NODE_ENV: "production"
+      node: 20.15.1
+      java: 17
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+
+    scripts:
+      - name: Install pnpm
+        script: npm install -g pnpm@latest
+
+      - name: Install dependencies
+        script: |
+          cd artifacts/food-ordering
+          pnpm install --frozen-lockfile
+
+      - name: Build web assets
+        script: |
+          cd artifacts/food-ordering
+          pnpm run build:cap
+
+      - name: Add / sync Android
+        script: |
+          cd artifacts/food-ordering
+          if [ ! -d "android" ]; then npx cap add android; fi
+          npx cap sync android
+
+      - name: Build debug APK
+        script: |
+          cd artifacts/food-ordering/android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+    artifacts:
+      - artifacts/food-ordering/android/app/build/outputs/apk/debug/app-debug.apk
