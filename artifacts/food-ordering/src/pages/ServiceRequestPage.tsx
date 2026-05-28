@@ -4,20 +4,13 @@ import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { SERVICE_DEFS, ServiceType } from "@/types/services";
 import {
-  ArrowLeft, MapPin, User, Phone, Banknote, Smartphone,
-  Loader2, StickyNote, ChevronRight,
+  ArrowLeft, MapPin, User, Phone, Loader2, StickyNote,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
-const momoProviders = [
-  { id: "mtn", label: "MTN MoMo" },
-  { id: "vodafone", label: "Vodafone Cash" },
-  { id: "airteltigo", label: "AirtelTigo" },
-];
-
 const SectionCard = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
-  <div className={`rounded-2xl border border-border bg-card p-5 shadow-sm ${className}`}>{children}</div>
+  <div className={`rounded-2xl border border-border bg-card p-5 shadow-card ${className}`}>{children}</div>
 );
 
 const SectionTitle = ({ icon: Icon, children }: { icon: React.ElementType; children: React.ReactNode }) => (
@@ -27,23 +20,33 @@ const SectionTitle = ({ icon: Icon, children }: { icon: React.ElementType; child
   </h3>
 );
 
-const Input = ({
-  label, value, onChange, placeholder, type = "text", icon: Icon,
+const Field = ({
+  label, value, onChange, placeholder, type = "text", icon: Icon, rows,
 }: {
   label: string; value: string; onChange: (v: string) => void;
-  placeholder?: string; type?: string; icon?: React.ElementType;
+  placeholder?: string; type?: string; icon?: React.ElementType; rows?: number;
 }) => (
   <div>
     <label className="mb-1 block text-xs font-medium text-muted-foreground">{label}</label>
     <div className="relative">
-      {Icon && <Icon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />}
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        type={type}
-        className={`w-full rounded-xl border border-border bg-background py-2.5 ${Icon ? "pl-10" : "pl-4"} pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring`}
-      />
+      {Icon && !rows && <Icon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />}
+      {rows ? (
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          rows={rows}
+          className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+        />
+      ) : (
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          type={type}
+          className={`w-full rounded-xl border border-border bg-background py-2.5 ${Icon ? "pl-10" : "pl-4"} pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring`}
+        />
+      )}
     </div>
   </div>
 );
@@ -56,33 +59,25 @@ const ServiceRequestPage = () => {
   const serviceType = type as ServiceType;
   const svcDef = SERVICE_DEFS.find((s) => s.type === serviceType);
 
-  // Common
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [pickupAddress, setPickupAddress] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [notes, setNotes] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"momo" | "cash">("cash");
-  const [momoProvider, setMomoProvider] = useState("mtn");
-  const [momoPhone, setMomoPhone] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Errand-specific
   const [errandTask, setErrandTask] = useState("");
   const [errandBudget, setErrandBudget] = useState("");
 
-  // Parcel-specific
   const [parcelDesc, setParcelDesc] = useState("");
   const [parcelWeight, setParcelWeight] = useState("light");
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
 
-  // Package-specific
   const [packageDesc, setPackageDesc] = useState("");
   const [packageSize, setPackageSize] = useState("small");
   const [isFragile, setIsFragile] = useState(false);
 
-  // Pharmacy-specific
   const [pharmacyName, setPharmacyName] = useState("");
   const [medications, setMedications] = useState("");
 
@@ -94,16 +89,12 @@ const ServiceRequestPage = () => {
     if (!svcDef) navigate("/services", { replace: true });
   }, [svcDef, navigate]);
 
-  // Pre-fill from profile
   useEffect(() => {
     if (!user) return;
     supabase.from("profiles").select("name, phone").eq("user_id", user.id).single().then(({ data }) => {
-      if (data) {
-        setCustomerName(data.name || "");
-        setCustomerPhone(data.phone || "");
-      }
+      if (data) { setCustomerName(data.name || ""); setCustomerPhone(data.phone || ""); }
     });
-    supabase.from("delivery_addresses").select("*").eq("user_id", user.id).eq("is_default", true).single().then(({ data }) => {
+    supabase.from("delivery_addresses").select("address_line1, city").eq("user_id", user.id).eq("is_default", true).single().then(({ data }) => {
       if (data) setDeliveryAddress(`${data.address_line1}, ${data.city}`);
     });
   }, [user]);
@@ -120,45 +111,62 @@ const ServiceRequestPage = () => {
     return {};
   };
 
-  const validateForm = () => {
+  const validate = () => {
     if (!customerName.trim()) { toast.error("Enter your name"); return false; }
     if (!customerPhone.trim()) { toast.error("Enter your phone number"); return false; }
-    if (!pickupAddress.trim()) { toast.error("Enter pickup address"); return false; }
+    if (!pickupAddress.trim()) { toast.error("Enter pickup / task location"); return false; }
     if (!deliveryAddress.trim()) { toast.error("Enter delivery address"); return false; }
-    if (serviceType === "errand" && !errandTask.trim()) { toast.error("Describe the errand task"); return false; }
+    if (serviceType === "errand" && !errandTask.trim()) { toast.error("Describe the errand"); return false; }
     if (serviceType === "parcel" && !parcelDesc.trim()) { toast.error("Describe what you're sending"); return false; }
     if (serviceType === "package" && !packageDesc.trim()) { toast.error("Describe the package"); return false; }
-    if (serviceType === "pharmacy" && !medications.trim()) { toast.error("List the medications needed"); return false; }
-    if (paymentMethod === "momo" && !momoPhone.trim()) { toast.error("Enter your MoMo number"); return false; }
+    if (serviceType === "pharmacy" && !medications.trim()) { toast.error("List the medications"); return false; }
     return true;
   };
 
   const handleSubmit = async () => {
-    if (!validateForm()) return;
+    if (!validate()) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("service_requests" as any)
+      // Build notes JSON — all service details stored here for rider app
+      const notesPayload = JSON.stringify({
+        service_type: serviceType,
+        pickup_address: pickupAddress,
+        delivery_address: deliveryAddress,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        details: buildDetails(),
+        extra_notes: notes || null,
+      });
+
+      // Insert into orders table — riders can see + accept
+      const { data: order, error: orderErr } = await supabase
+        .from("orders")
         .insert({
           user_id: user.id,
-          service_type: serviceType,
-          status: "searching",
-          pickup_address: pickupAddress,
-          delivery_address: deliveryAddress,
-          customer_name: customerName,
-          customer_phone: customerPhone,
-          payment_method: paymentMethod,
-          momo_phone: paymentMethod === "momo" ? momoPhone : null,
-          service_fee: serviceFee,
-          details: buildDetails(),
-          notes: notes || null,
+          address_id: null,
+          total_amount: serviceFee,
+          delivery_fee: 0,
+          payment_method: "cash_on_delivery",
+          notes: notesPayload,
+          status: "pending",
         })
         .select()
         .single();
 
-      if (error) throw error;
-      toast.success("Request sent! Finding you a rider…");
-      navigate(`/track/${(data as any).id}?type=service`);
+      if (orderErr) throw orderErr;
+
+      // Single order_item represents the service
+      const { error: itemErr } = await supabase.from("order_items").insert({
+        order_id: order.id,
+        item_id: `service-${serviceType}`,
+        item_name: `${svcDef.label} ${svcDef.icon}`,
+        quantity: 1,
+        price: serviceFee,
+      });
+      if (itemErr) throw itemErr;
+
+      toast.success("Request submitted! Finding you a rider… 🏍️");
+      navigate(`/track/${order.id}?type=service`);
     } catch (e: any) {
       toast.error(e.message || "Failed to submit request");
     }
@@ -167,8 +175,7 @@ const ServiceRequestPage = () => {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-md">
+      <header className="sticky top-0 z-50 border-b border-border bg-white/90 backdrop-blur-md">
         <div className="container mx-auto flex h-14 items-center gap-3 px-4">
           <button onClick={() => navigate(-1)} className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
             <ArrowLeft className="h-4 w-4" />
@@ -180,7 +187,7 @@ const ServiceRequestPage = () => {
 
       <div className="container mx-auto max-w-lg flex-1 space-y-4 px-4 py-5 pb-32">
 
-        {/* Service badge */}
+        {/* Badge */}
         <div className={`flex items-center gap-3 rounded-2xl p-4 ${svcDef.color}`}>
           <span className="text-4xl">{svcDef.icon}</span>
           <div>
@@ -197,8 +204,8 @@ const ServiceRequestPage = () => {
         <SectionCard>
           <SectionTitle icon={User}>Your Details</SectionTitle>
           <div className="space-y-3">
-            <Input label="Full Name" value={customerName} onChange={setCustomerName} placeholder="Kwame Asante" icon={User} />
-            <Input label="Phone Number" value={customerPhone} onChange={setCustomerPhone} placeholder="024 XXX XXXX" type="tel" icon={Phone} />
+            <Field label="Full Name" value={customerName} onChange={setCustomerName} placeholder="Kwame Asante" icon={User} />
+            <Field label="Phone Number" value={customerPhone} onChange={setCustomerPhone} placeholder="024 XXX XXXX" type="tel" icon={Phone} />
           </div>
         </SectionCard>
 
@@ -206,17 +213,15 @@ const ServiceRequestPage = () => {
         <SectionCard>
           <SectionTitle icon={MapPin}>Locations</SectionTitle>
           <div className="space-y-3">
-            <Input
-              label={serviceType === "errand" ? "Where to go (task location)" : serviceType === "pharmacy" ? "Pharmacy location (or 'any nearby')" : "Pickup Address"}
+            <Field
+              label={serviceType === "errand" ? "Task location (where to go)" : serviceType === "pharmacy" ? "Pharmacy / pickup location" : "Pickup Address"}
               value={pickupAddress} onChange={setPickupAddress}
-              placeholder="e.g. Accra Mall, East Legon"
-              icon={MapPin}
+              placeholder="e.g. Accra Mall, East Legon" icon={MapPin}
             />
-            <Input
-              label={serviceType === "errand" ? "Deliver to (your location)" : "Delivery Address"}
+            <Field
+              label={serviceType === "errand" ? "Deliver to (your location)" : "Delivery Address (your location)"}
               value={deliveryAddress} onChange={setDeliveryAddress}
-              placeholder="e.g. 12 Oxford St, Osu"
-              icon={MapPin}
+              placeholder="e.g. 12 Oxford St, Osu" icon={MapPin}
             />
           </div>
         </SectionCard>
@@ -226,16 +231,9 @@ const ServiceRequestPage = () => {
           <SectionCard>
             <SectionTitle icon={StickyNote}>Errand Details</SectionTitle>
             <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">What do you need done?</label>
-                <textarea
-                  value={errandTask} onChange={(e) => setErrandTask(e.target.value)}
-                  placeholder="e.g. Buy 2kg tomatoes, 1 onion and 500ml vegetable oil from the market..."
-                  rows={3}
-                  className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-                />
-              </div>
-              <Input label="Budget (GH₵) — how much to spend" value={errandBudget} onChange={setErrandBudget} placeholder="e.g. 50" type="number" />
+              <Field label="What do you need done?" value={errandTask} onChange={setErrandTask}
+                placeholder="e.g. Buy 2kg tomatoes, 1 onion and 500ml oil from the market…" rows={3} />
+              <Field label="Budget (GH₵) — how much to spend" value={errandBudget} onChange={setErrandBudget} placeholder="e.g. 50" type="number" />
             </div>
           </SectionCard>
         )}
@@ -244,28 +242,21 @@ const ServiceRequestPage = () => {
           <SectionCard>
             <SectionTitle icon={StickyNote}>Parcel Details</SectionTitle>
             <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">What are you sending?</label>
-                <textarea
-                  value={parcelDesc} onChange={(e) => setParcelDesc(e.target.value)}
-                  placeholder="e.g. Documents in an envelope, small gift box..."
-                  rows={2}
-                  className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-                />
-              </div>
+              <Field label="What are you sending?" value={parcelDesc} onChange={setParcelDesc}
+                placeholder="e.g. Documents in an envelope, small gift box…" rows={2} />
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">Weight estimate</label>
                 <div className="flex gap-2">
                   {["light", "medium", "heavy"].map((w) => (
                     <button key={w} onClick={() => setParcelWeight(w)}
                       className={`flex-1 rounded-xl border-2 py-2 text-xs font-semibold capitalize transition-all ${parcelWeight === w ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>
-                      {w === "light" ? "Light (<1kg)" : w === "medium" ? "Medium (1–5kg)" : "Heavy (5kg+)"}
+                      {w === "light" ? "<1kg" : w === "medium" ? "1–5kg" : "5kg+"}
                     </button>
                   ))}
                 </div>
               </div>
-              <Input label="Recipient Name" value={recipientName} onChange={setRecipientName} placeholder="Who receives it?" icon={User} />
-              <Input label="Recipient Phone" value={recipientPhone} onChange={setRecipientPhone} placeholder="024 XXX XXXX" type="tel" icon={Phone} />
+              <Field label="Recipient Name" value={recipientName} onChange={setRecipientName} placeholder="Who receives it?" icon={User} />
+              <Field label="Recipient Phone" value={recipientPhone} onChange={setRecipientPhone} placeholder="024 XXX XXXX" type="tel" icon={Phone} />
             </div>
           </SectionCard>
         )}
@@ -274,35 +265,25 @@ const ServiceRequestPage = () => {
           <SectionCard>
             <SectionTitle icon={StickyNote}>Package Details</SectionTitle>
             <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">What's in the package?</label>
-                <textarea
-                  value={packageDesc} onChange={(e) => setPackageDesc(e.target.value)}
-                  placeholder="e.g. Laptop in original box, bedside table..."
-                  rows={2}
-                  className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-                />
-              </div>
+              <Field label="What's in the package?" value={packageDesc} onChange={setPackageDesc}
+                placeholder="e.g. Laptop in original box, bedside table…" rows={2} />
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">Package size</label>
                 <div className="flex gap-2">
                   {["small", "medium", "large"].map((s) => (
                     <button key={s} onClick={() => setPackageSize(s)}
-                      className={`flex-1 rounded-xl border-2 py-2 text-xs font-semibold capitalize transition-all ${packageSize === s ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>
-                      {s === "small" ? "Small (shoe box)" : s === "medium" ? "Medium (suitcase)" : "Large (furniture)"}
+                      className={`flex-1 rounded-xl border-2 py-2 text-[11px] font-semibold capitalize transition-all ${packageSize === s ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>
+                      {s === "small" ? "Small" : s === "medium" ? "Medium" : "Large"}
                     </button>
                   ))}
                 </div>
               </div>
               <div className="flex items-center gap-3 rounded-xl border border-border p-3">
-                <input type="checkbox" id="fragile" checked={isFragile} onChange={(e) => setIsFragile(e.target.checked)}
-                  className="h-4 w-4 accent-primary cursor-pointer" />
-                <label htmlFor="fragile" className="text-sm font-medium text-foreground cursor-pointer">
-                  ⚠️ Fragile — handle with care
-                </label>
+                <input type="checkbox" id="fragile" checked={isFragile} onChange={(e) => setIsFragile(e.target.checked)} className="h-4 w-4 accent-primary cursor-pointer" />
+                <label htmlFor="fragile" className="text-sm font-medium text-foreground cursor-pointer">⚠️ Fragile — handle with care</label>
               </div>
-              <Input label="Recipient Name" value={recipientName} onChange={setRecipientName} placeholder="Who receives it?" icon={User} />
-              <Input label="Recipient Phone" value={recipientPhone} onChange={setRecipientPhone} placeholder="024 XXX XXXX" type="tel" icon={Phone} />
+              <Field label="Recipient Name" value={recipientName} onChange={setRecipientName} placeholder="Who receives it?" icon={User} />
+              <Field label="Recipient Phone" value={recipientPhone} onChange={setRecipientPhone} placeholder="024 XXX XXXX" type="tel" icon={Phone} />
             </div>
           </SectionCard>
         )}
@@ -311,18 +292,9 @@ const ServiceRequestPage = () => {
           <SectionCard>
             <SectionTitle icon={StickyNote}>Pharmacy Details</SectionTitle>
             <div className="space-y-3">
-              <Input label="Pharmacy name (optional — leave blank for nearest)" value={pharmacyName} onChange={setPharmacyName} placeholder="e.g. Ernest Chemist, Osu" icon={MapPin} />
-              <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                  Medications / Items needed
-                </label>
-                <textarea
-                  value={medications} onChange={(e) => setMedications(e.target.value)}
-                  placeholder="e.g. Paracetamol 500mg x2, Amoxicillin 250mg x1 capsules (prescription attached if needed)..."
-                  rows={4}
-                  className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-                />
-              </div>
+              <Field label="Pharmacy name (optional — leave blank for nearest)" value={pharmacyName} onChange={setPharmacyName} placeholder="e.g. Ernest Chemist, Osu" icon={MapPin} />
+              <Field label="Medications / Items needed" value={medications} onChange={setMedications}
+                placeholder="e.g. Paracetamol 500mg x2, Amoxicillin 250mg x1 capsules…" rows={4} />
             </div>
           </SectionCard>
         )}
@@ -330,70 +302,31 @@ const ServiceRequestPage = () => {
         {/* Notes */}
         <SectionCard>
           <SectionTitle icon={StickyNote}>Additional Notes</SectionTitle>
-          <textarea
-            value={notes} onChange={(e) => setNotes(e.target.value)}
-            placeholder="Any extra instructions for the rider…"
-            rows={2}
-            className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-          />
-        </SectionCard>
-
-        {/* Payment */}
-        <SectionCard>
-          <SectionTitle icon={Banknote}>Payment</SectionTitle>
-          <div className="grid grid-cols-2 gap-3">
-            <button onClick={() => setPaymentMethod("cash")}
-              className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all ${paymentMethod === "cash" ? "border-primary bg-primary/5" : "border-border"}`}>
-              <Banknote className={`h-7 w-7 ${paymentMethod === "cash" ? "text-primary" : "text-muted-foreground"}`} />
-              <span className={`text-sm font-semibold ${paymentMethod === "cash" ? "text-primary" : "text-foreground"}`}>Cash</span>
-              <span className="text-[10px] text-muted-foreground">Pay on delivery</span>
-            </button>
-            <button onClick={() => setPaymentMethod("momo")}
-              className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all ${paymentMethod === "momo" ? "border-primary bg-primary/5" : "border-border"}`}>
-              <Smartphone className={`h-7 w-7 ${paymentMethod === "momo" ? "text-primary" : "text-muted-foreground"}`} />
-              <span className={`text-sm font-semibold ${paymentMethod === "momo" ? "text-primary" : "text-foreground"}`}>Mobile Money</span>
-              <span className="text-[10px] text-muted-foreground">MTN, Vodafone, AT</span>
-            </button>
-          </div>
-
-          {paymentMethod === "momo" && (
-            <div className="mt-4 space-y-3 rounded-xl bg-muted/50 p-4">
-              <div className="flex gap-2">
-                {momoProviders.map((p) => (
-                  <button key={p.id} onClick={() => setMomoProvider(p.id)}
-                    className={`flex-1 rounded-lg border-2 px-1 py-2 text-center text-[11px] font-semibold transition-all ${momoProvider === p.id ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted-foreground"}`}>
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-              <Input label="MoMo Number" value={momoPhone} onChange={setMomoPhone} placeholder="024 XXX XXXX" type="tel" icon={Phone} />
-            </div>
-          )}
+          <Field label="" value={notes} onChange={setNotes} placeholder="Any extra instructions for the rider…" rows={2} />
         </SectionCard>
 
         {/* Summary */}
         <SectionCard>
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Service fee</span>
-            <span className="text-lg font-extrabold text-primary">GH₵{serviceFee}</span>
+            <span className="text-xl font-extrabold text-primary">GH₵{serviceFee}</span>
           </div>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            Final amount confirmed before payment
-          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Pay cash on delivery</p>
         </SectionCard>
       </div>
 
       {/* CTA */}
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 px-4 py-3 backdrop-blur-md">
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-white/95 px-4 py-3 backdrop-blur-md">
         <div className="container mx-auto max-w-lg">
           <Button
             onClick={handleSubmit}
             disabled={loading}
-            className="w-full rounded-2xl bg-gradient-warm py-6 text-base font-bold text-primary-foreground shadow-warm hover:scale-[1.01] active:scale-95 disabled:opacity-60"
+            className="w-full rounded-2xl bg-primary py-6 text-base font-bold text-white shadow-warm hover:scale-[1.01] active:scale-95 disabled:opacity-60"
           >
             {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <span className="mr-2">{svcDef.icon}</span>}
-            {loading ? "Submitting…" : `Request ${svcDef.label} — GH₵${serviceFee}`}
+            {loading ? "Submitting…" : `Find a Rider — GH₵${serviceFee}`}
           </Button>
+          <p className="mt-1.5 text-center text-[11px] text-muted-foreground">Pay cash when delivered</p>
         </div>
       </div>
     </div>

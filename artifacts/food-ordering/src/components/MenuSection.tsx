@@ -1,27 +1,28 @@
 import { useState, useMemo } from "react";
-import { menuItems } from "@/data/menu";
+import { useMenuItems } from "@/hooks/useMenuItems";
 import MenuGrid from "@/components/MenuGrid";
-import { Search, X } from "lucide-react";
+import { Search, X, Loader2 } from "lucide-react";
 
 const MenuSection = () => {
+  const { items, loading } = useMenuItems();
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
     if (!query.trim()) return null;
     const q = query.toLowerCase();
-    return menuItems.filter(
+    return items.filter(
       (i) =>
         i.name.toLowerCase().includes(q) ||
         i.description.toLowerCase().includes(q)
     );
-  }, [query]);
+  }, [query, items]);
 
-  const trending = [...menuItems].sort((a, b) => (b.orders ?? 0) - (a.orders ?? 0));
-  const signature = menuItems.filter((i) => i.category === "signature");
-  const sides = menuItems.filter((i) => i.category === "sides");
+  const trending = [...items].sort((a, b) => (b.orders ?? 0) - (a.orders ?? 0));
+  const signature = items.filter((i) => i.category === "signature");
+  const sides = items.filter((i) => i.category === "sides");
 
   return (
-    <section id="menu" className="py-12">
+    <section id="menu" className="py-10">
       <div className="container mx-auto px-4 mb-8">
         <h2 className="font-display text-3xl font-extrabold uppercase text-foreground md:text-4xl">
           The <span className="text-gradient">Menu</span>
@@ -30,7 +31,6 @@ const MenuSection = () => {
           Pick your base. Stack your toppings. Own it.
         </p>
 
-        {/* Search bar */}
         <div className="relative mt-4">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -50,7 +50,11 @@ const MenuSection = () => {
         </div>
       </div>
 
-      {filtered ? (
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" /> Loading menu…
+        </div>
+      ) : filtered ? (
         filtered.length > 0 ? (
           <MenuGrid title={`Results for "${query}"`} items={filtered} icon="🔍" />
         ) : (
@@ -61,9 +65,9 @@ const MenuSection = () => {
         )
       ) : (
         <>
-          <MenuGrid title="Trending — Most Stacked" items={trending} icon="🔥" />
-          <MenuGrid title="Signature Bowls" items={signature} icon="👑" />
-          <MenuGrid title="Sides & Drinks" items={sides} icon="🍦" />
+          <MenuGrid title="Trending — Most Ordered" items={trending} icon="🔥" />
+          {signature.length > 0 && <MenuGrid title="Signature Bowls" items={signature} icon="👑" />}
+          {sides.length > 0 && <MenuGrid title="Sides & Drinks" items={sides} icon="🍦" />}
         </>
       )}
     </section>
