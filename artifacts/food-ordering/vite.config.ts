@@ -24,14 +24,18 @@ if (!basePath && !isBuild) {
 // Capacitor needs the app served from root ("/")
 const resolvedBase = basePath ?? "/";
 
+const isDevReplit = process.env.NODE_ENV !== "production" && process.env.REPL_ID !== undefined;
+
 export default defineConfig({
   base: resolvedBase,
   plugins: [
     react(),
-    runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
+    // Only load Replit dev tools in the Replit dev environment — never in
+    // production / Capacitor builds (the error-overlay opens a Replit WebSocket
+    // that crashes the Android WebView on startup).
+    ...(isDevReplit
       ? [
+          runtimeErrorOverlay(),
           await import("@replit/vite-plugin-cartographer").then((m) =>
             m.cartographer({
               root: path.resolve(import.meta.dirname, ".."),
