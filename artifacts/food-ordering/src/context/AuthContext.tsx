@@ -6,8 +6,9 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signUp: (name: string, email: string, phone: string, password: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signInWithPhone: (phone: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -34,17 +35,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signUp({
+  const signUp = async (name: string, email: string, phone: string, password: string) => {
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: window.location.origin },
+      options: {
+        emailRedirectTo: window.location.origin,
+        data: { name, phone },
+      },
     });
+    if (error) return { error: new Error(error.message) };
+    if (!data.user) return { error: new Error("Sign up failed — please try again") };
+
+    // Save name + phone + email to profiles
+    await supabase.from("profiles").upsert({
+      user_id: data.user.id,
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      phone: phone.trim(),
+      updated_at: new Date().toISOString(),
+    });
+
+    return { error: null };
+  };
+
+  // Legacy email login (kept for admin / internal use)
+  const signIn = async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error ? new Error(error.message) : null };
   };
 
-  const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+  // Primary login: phone number → look up email → sign in
+  const signInWithPhone = async (phone: string, password: string) => {
+    const cleaned = phone.replace(/\s+/g, "").replace(/^0/, "+233");
+
+    // Try exact phone match, then with leading 0 variant
+    const variants = [cleaned, phone.trim()];
+
+    let foundEmail: string | null = null;
+
+    for (const variant of variants) {
+      const { data } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("phone", variant)
+        .maybeSingle();
+      if (data?.email) { foundEmail = data.email; break; }
+    }
+
+    // Fallback: try treating phone directly as email (edge case)
+    if (!foundEmail && phone.includes("@")) {
+      foundEmail = phone.trim().toLowerCase();
+    }
+
+    if (!foundEmail) {
+      return { error: new Error("No account found with this phone number. Please sign up first.") };
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({ email: foundEmail, password });
     return { error: error ? new Error(error.message) : null };
   };
 
@@ -52,13 +100,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await supabase.auth.signOut();
   };
 
-  // Don't render children until auth state is resolved — prevents blank flash
-  if (loading) {
-    return null; // SplashDismisser won't fire, so HTML splash stays visible
-  }
+  if (loading) return null;
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signInWithPhone, signOut }}>
       {children}
     </AuthContext.Provider>
   );
