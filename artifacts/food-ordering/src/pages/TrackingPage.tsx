@@ -214,7 +214,7 @@ const MapView = ({
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
 
     // Force canvas to match container size whenever layout shifts
-    const ro = new ResizeObserver(() => { map.resize(); });
+    const ro = new ResizeObserver(() => { try { map.resize(); } catch { /* ignore pre-load */ } });
     ro.observe(containerRef.current);
 
     map.on("load", async () => {
