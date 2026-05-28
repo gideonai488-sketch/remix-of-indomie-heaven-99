@@ -9,7 +9,7 @@ interface AuthContextType {
   sendOtp: (phone: string) => Promise<{ error: string | null }>;
   verifyOtp: (phone: string, code: string) => Promise<{ error: string | null }>;
   signUp: (name: string, email: string, phone: string, password: string) => Promise<{ error: Error | null }>;
-  signUpWithPhone: (name: string, phone: string, password: string) => Promise<{ error: string | null }>;
+  signUpWithPhone: (name: string, phone: string, password: string, email?: string) => Promise<{ error: string | null; needsEmailConfirm?: boolean }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signInWithPhone: (phone: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -23,17 +23,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    let settled = false;
+
+    const settle = (s: Session | null) => {
+      if (!settled) settled = true;
+      setSession(s);
+      setUser(s?.user ?? null);
       setLoading(false);
+    };
+
+    // Safety timeout — if Supabase never fires (e.g. broken stored session),
+    // force loading=false after 6 s so the app doesn't stay on a white screen.
+    const fallback = setTimeout(() => {
+      if (!settled) {
+        console.warn("[Auth] session init timed out — clearing stored auth");
+        supabase.auth.signOut().catch(() => {});
+        settle(null);
+      }
+    }, 6000);
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      clearTimeout(fallback);
+      settle(s);
     });
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-    return () => subscription.unsubscribe();
+
+    // getSession is also a reliable path on cold start
+    supabase.auth.getSession()
+      .then(({ data: { session: s } }) => {
+        clearTimeout(fallback);
+        settle(s);
+      })
+      .catch(() => {
+        // Corrupted storage — wipe and continue
+        supabase.auth.signOut().catch(() => {});
+        settle(null);
+      });
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(fallback);
+    };
   }, []);
 
   const normalizePhone = (phone: string) =>
@@ -41,20 +70,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const sendOtp = async (phone: string): Promise<{ error: string | null }> => {
     const normalized = normalizePhone(phone);
-    const { error } = await supabase.functions.invoke("send-otp", {
-      body: { phone: normalized },
-    });
-    if (error) return { error: error.message || "Failed to send OTP" };
-    return { error: null };
+    try {
+      const { error } = await supabase.functions.invoke("send-otp", {
+        body: { phone: normalized },
+      });
+      if (error) return { error: error.message || "Failed to send OTP" };
+      return { error: null };
+    } catch (e: any) {
+      return { error: e?.message || "Failed to send OTP" };
+    }
   };
 
   const verifyOtp = async (phone: string, code: string): Promise<{ error: string | null }> => {
     const normalized = normalizePhone(phone);
-    const { error } = await supabase.functions.invoke("verify-otp", {
-      body: { phone: normalized, code },
-    });
-    if (error) return { error: error.message || "Invalid or expired code" };
-    return { error: null };
+    try {
+      const { error } = await supabase.functions.invoke("verify-otp", {
+        body: { phone: normalized, code },
+      });
+      if (error) return { error: error.message || "Invalid or expired code" };
+      return { error: null };
+    } catch (e: any) {
+      return { error: e?.message || "Invalid or expired code" };
+    }
   };
 
   const signUpWithPhone = async (
@@ -62,103 +99,119 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     phone: string,
     password: string,
     email?: string
-  ): Promise<{ error: string | null }> => {
+  ): Promise<{ error: string | null; needsEmailConfirm?: boolean }> => {
     const normalized = normalizePhone(phone);
     const authEmail = email?.trim().toLowerCase() || `${normalized.replace("+", "")}@speedup.app`;
 
-    const { data, error } = await supabase.auth.signUp({
-      email: authEmail,
-      password,
-      options: { data: { full_name: name, phone: normalized } },
-    });
-    if (error) return { error: error.message };
-    if (!data.user) return { error: "Sign up failed — please try again" };
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: authEmail,
+        password,
+        options: { data: { full_name: name, phone: normalized } },
+      });
+      if (error) return { error: error.message };
+      if (!data.user) return { error: "Sign up failed — please try again" };
 
-    await supabase.from("profiles").upsert({
-      user_id: data.user.id,
-      name: name.trim(),
-      email: authEmail,
-      phone: normalized,
-      updated_at: new Date().toISOString(),
-    });
+      // Persist profile
+      await supabase.from("profiles").upsert({
+        user_id: data.user.id,
+        name: name.trim(),
+        email: authEmail,
+        phone: normalized,
+        updated_at: new Date().toISOString(),
+      }).catch(() => {});
 
-    // Mark phone as verified post-signup
-    await supabase.functions.invoke("verify-otp", {
-      body: { phone: normalized, code: "__post_signup__" },
-    }).catch(() => {});
+      // If session is null, Supabase requires email confirmation
+      if (!data.session) {
+        return { error: null, needsEmailConfirm: true };
+      }
 
-    return { error: null };
+      return { error: null, needsEmailConfirm: false };
+    } catch (e: any) {
+      return { error: e?.message || "Sign up failed — please try again" };
+    }
   };
 
   const signUp = async (name: string, email: string, phone: string, password: string) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: window.location.origin,
-        data: { name, phone },
-      },
-    });
-    if (error) return { error: new Error(error.message) };
-    if (!data.user) return { error: new Error("Sign up failed — please try again") };
-    await supabase.from("profiles").upsert({
-      user_id: data.user.id,
-      name: name.trim(),
-      email: email.trim().toLowerCase(),
-      phone: phone.trim(),
-      updated_at: new Date().toISOString(),
-    });
-    return { error: null };
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { name, phone },
+        },
+      });
+      if (error) return { error: new Error(error.message) };
+      if (!data.user) return { error: new Error("Sign up failed — please try again") };
+      await supabase.from("profiles").upsert({
+        user_id: data.user.id,
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        phone: phone.trim(),
+        updated_at: new Date().toISOString(),
+      }).catch(() => {});
+      return { error: null };
+    } catch (e: any) {
+      return { error: new Error(e?.message || "Sign up failed") };
+    }
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error ? new Error(error.message) : null };
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      return { error: error ? new Error(error.message) : null };
+    } catch (e: any) {
+      return { error: new Error(e?.message || "Sign in failed") };
+    }
   };
 
   const signInWithPhone = async (phone: string, password: string) => {
     const input = phone.trim();
 
-    const trySignIn = async (email: string) => {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (!error) return { error: null };
-      // "Email not confirmed" — Supabase requires confirmation; guide user
-      if (error.message?.toLowerCase().includes("not confirmed") || error.message?.toLowerCase().includes("email_not_confirmed")) {
-        return { error: new Error("Please confirm your email first — check your inbox for a message from SpeedUp, or ask your admin to disable email confirmation in Supabase.") };
+    const trySignIn = async (email: string): Promise<{ error: Error | null }> => {
+      try {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (!error) return { error: null };
+        if (
+          error.message?.toLowerCase().includes("not confirmed") ||
+          error.message?.toLowerCase().includes("email_not_confirmed")
+        ) {
+          return { error: new Error("Account not confirmed. In Supabase → Authentication → Email, disable 'Confirm email', then try again.") };
+        }
+        return { error: new Error(error.message) };
+      } catch (e: any) {
+        return { error: new Error(e?.message || "Sign in failed") };
       }
-      return { error };
     };
 
-    // If user typed their email directly, use it
+    // User typed an email directly
     if (input.includes("@")) {
-      const res = await trySignIn(input.toLowerCase());
-      return { error: res.error ? new Error(res.error.message) : null };
+      return trySignIn(input.toLowerCase());
     }
 
     const cleaned = normalizePhone(input);
     const syntheticEmail = `${cleaned.replace("+", "")}@speedup.app`;
 
-    // Try the synthetic email first (works for phone-only accounts)
     const { error: syntheticErr } = await supabase.auth.signInWithPassword({ email: syntheticEmail, password });
     if (!syntheticErr) return { error: null };
 
-    // Email-not-confirmed on synthetic account — surface it clearly
-    if (syntheticErr.message?.toLowerCase().includes("not confirmed") || syntheticErr.message?.toLowerCase().includes("email_not_confirmed")) {
-      return { error: new Error("Account not confirmed. Go to Supabase → Authentication → Email → disable 'Confirm email', then try again.") };
+    if (
+      syntheticErr.message?.toLowerCase().includes("not confirmed") ||
+      syntheticErr.message?.toLowerCase().includes("email_not_confirmed")
+    ) {
+      return { error: new Error("Account not confirmed. In Supabase → Authentication → Email, disable 'Confirm email', then try again.") };
     }
 
-    // Wrong password / account used a real email — try profiles lookup
     if (syntheticErr.message?.toLowerCase().includes("invalid")) {
-      const variants = [cleaned, input];
-      for (const variant of variants) {
+      // Try to find a real email from profiles
+      for (const variant of [cleaned, input]) {
         const { data } = await supabase
           .from("profiles")
           .select("email")
           .eq("phone", variant)
           .maybeSingle();
         if (data?.email && data.email !== syntheticEmail) {
-          const res = await trySignIn(data.email);
-          return { error: res.error ? new Error(res.error.message) : null };
+          return trySignIn(data.email);
         }
       }
       return { error: new Error("Wrong password. Try again.") };
@@ -167,7 +220,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { error: new Error("Account not found. If you signed up with an email, enter that instead.") };
   };
 
-  const signOut = async () => { await supabase.auth.signOut(); };
+  const signOut = async () => {
+    await supabase.auth.signOut().catch(() => {});
+  };
 
   return (
     <AuthContext.Provider value={{ user, session, loading, sendOtp, verifyOtp, signUp, signUpWithPhone, signIn, signInWithPhone, signOut }}>

@@ -82,7 +82,7 @@ const AuthPage = () => {
     setLoading(false);
   };
 
-  // Step 1: collect all details → create account → send OTP
+  // Step 1: collect all details → create account → (optionally) send OTP
   const handleCreateAndSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!signupName.trim()) { toast.error("Enter your full name"); return; }
@@ -92,19 +92,36 @@ const AuthPage = () => {
     if (signupPassword !== confirmPassword) { toast.error("Passwords don't match"); return; }
 
     setLoading(true);
-    // Create auth account first
-    const { error: signupErr } = await signUpWithPhone(
+
+    const { error: signupErr, needsEmailConfirm } = await signUpWithPhone(
       signupName.trim(), signupPhone.trim(), signupPassword, signupEmail.trim()
     );
     if (signupErr) { toast.error(signupErr); setLoading(false); return; }
 
-    // Then send OTP to verify phone
+    // Email confirmation required — user must confirm before they can log in
+    if (needsEmailConfirm) {
+      toast.success("Account created! Check your email to confirm your account, then sign in.");
+      setTab("login");
+      setLoading(false);
+      return;
+    }
+
+    // Email confirm is off → Supabase issued a session immediately. Try to sign in
+    // now so the navigation below works (onAuthStateChange may have already fired).
+    const { error: loginErr } = await signInWithPhone(signupPhone.trim(), signupPassword);
+    if (!loginErr) {
+      toast.success("Welcome to SpeedUp! 🏍️");
+      navigate(searchParams.get("redirect") || "/");
+      setLoading(false);
+      return;
+    }
+
+    // Signed in via onAuthStateChange already — just try OTP for phone verification
     const { error: otpErr } = await sendOtp(signupPhone.trim());
     if (otpErr) {
-      // Account created but OTP failed — still let them in
-      toast.success("Account created! Signing you in…");
-      const { error: loginErr } = await signInWithPhone(signupPhone.trim(), signupPassword);
-      if (!loginErr) navigate(searchParams.get("redirect") || "/");
+      // OTP not set up — skip verification, user is already in
+      toast.success("Account created! 🎉");
+      navigate(searchParams.get("redirect") || "/");
       setLoading(false);
       return;
     }
