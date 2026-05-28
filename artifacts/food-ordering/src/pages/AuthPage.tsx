@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Eye, EyeOff, ArrowLeft, Lock, Phone, User, CheckCircle2, KeyRound,
+  Eye, EyeOff, ArrowLeft, Lock, Phone, User, CheckCircle2, KeyRound, Mail,
 } from "lucide-react";
 
 const InputField = ({
@@ -63,6 +63,7 @@ const AuthPage = () => {
   const [signupPhone, setSignupPhone] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [signupName, setSignupName] = useState("");
+  const [signupEmail, setSignupEmail] = useState("");
   const [signupPassword, setSignupPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [otpSentTo, setOtpSentTo] = useState("");
@@ -117,10 +118,11 @@ const AuthPage = () => {
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!signupName.trim()) { toast.error("Enter your full name"); return; }
+    if (!signupEmail.trim() || !signupEmail.includes("@")) { toast.error("Enter a valid email address"); return; }
     if (signupPassword.length < 6) { toast.error("Password must be at least 6 characters"); return; }
     if (signupPassword !== confirmPassword) { toast.error("Passwords don't match"); return; }
     setLoading(true);
-    const { error } = await signUpWithPhone(signupName.trim(), signupPhone.trim(), signupPassword);
+    const { error } = await signUpWithPhone(signupName.trim(), signupPhone.trim(), signupPassword, signupEmail.trim());
     if (error) {
       toast.error(error);
     } else {
@@ -282,10 +284,13 @@ const AuthPage = () => {
                   <p className="font-semibold mb-0.5 flex items-center gap-1.5">
                     <CheckCircle2 className="h-3.5 w-3.5" /> Step 3 of 3 — Your Details
                   </p>
-                  Phone verified! Fill in your name and create a password.
+                  Phone verified! Fill in your details and create a password.
                 </div>
                 <InputField label="Full Name" placeholder="e.g. Alex Johnson" value={signupName}
                   onChange={setSignupName} icon={User} autoComplete="name"
+                />
+                <InputField label="Email Address" placeholder="you@example.com" value={signupEmail}
+                  onChange={setSignupEmail} type="email" icon={Mail} autoComplete="email"
                 />
                 <InputField label="Password" placeholder="Min. 6 characters" value={signupPassword}
                   onChange={setSignupPassword} type={showPassword ? "text" : "password"}

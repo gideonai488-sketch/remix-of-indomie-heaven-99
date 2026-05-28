@@ -60,13 +60,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signUpWithPhone = async (
     name: string,
     phone: string,
-    password: string
+    password: string,
+    email?: string
   ): Promise<{ error: string | null }> => {
     const normalized = normalizePhone(phone);
-    const fakeEmail = `${normalized.replace("+", "")}@speedup.app`;
+    const authEmail = email?.trim().toLowerCase() || `${normalized.replace("+", "")}@speedup.app`;
 
     const { data, error } = await supabase.auth.signUp({
-      email: fakeEmail,
+      email: authEmail,
       password,
       options: { data: { full_name: name, phone: normalized } },
     });
@@ -76,11 +77,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await supabase.from("profiles").upsert({
       user_id: data.user.id,
       name: name.trim(),
-      email: fakeEmail,
+      email: authEmail,
       phone: normalized,
       updated_at: new Date().toISOString(),
     });
 
+    // Mark phone as verified post-signup
     await supabase.functions.invoke("verify-otp", {
       body: { phone: normalized, code: "__post_signup__" },
     }).catch(() => {});
