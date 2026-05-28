@@ -824,18 +824,22 @@ const TrackingPage = () => {
             onClick={async () => {
               if (!window.confirm("Cancel this order?")) return;
               try {
-                const { error: dbErr, data: updated } = await (supabase as any)
+                const { error: dbErr } = await (supabase as any)
                   .from("orders")
                   .update({ status: "cancelled" })
-                  .eq("id", id)
-                  .in("status", ["pending", "searching_rider"])
-                  .select("id, status");
+                  .eq("id", id);
 
                 if (dbErr) throw new Error(dbErr.message);
 
-                // If no rows returned, RLS silently blocked it
-                if (!updated || updated.length === 0) {
-                  throw new Error("Permission denied — order could not be cancelled. Make sure you are logged in and the order is still pending.");
+                // Verify the update actually took effect
+                const { data: check } = await (supabase as any)
+                  .from("orders")
+                  .select("status")
+                  .eq("id", id)
+                  .single();
+
+                if (check?.status !== "cancelled") {
+                  throw new Error("Could not cancel — order may have already been assigned to a rider.");
                 }
 
                 toast.success("Order cancelled.");
