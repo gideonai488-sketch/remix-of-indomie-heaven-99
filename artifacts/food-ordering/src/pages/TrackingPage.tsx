@@ -6,10 +6,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
-
-mapboxgl.accessToken = "pk.eyJ1IjoidHJhdmVsbWF0ZTExMjMiLCJhIjoiY21oc2hmM3g5MGo0ajJzcjg1cHgzYjFtYSJ9.5WCLBT_KSghCcRtzH3xreQ";
 
 type OrderStatus = "pending" | "searching_rider" | "assigned" | "accepted" | "confirmed" | "preparing" | "picked_up" | "in_transit" | "delivered" | "cancelled";
 
@@ -106,55 +102,32 @@ const FareMeter = ({ running, finalAmount }: { running: boolean; finalAmount: nu
   );
 };
 
-// -------- Mapbox Live Tracking Map --------
-const ACCRA: [number, number] = [-0.1870, 5.6037];
-// Public pk.* token — safe to hardcode in frontend code
-const TOKEN = "pk.eyJ1IjoidHJhdmVsbWF0ZTExMjMiLCJhIjoiY21oc2hmM3g5MGo0ajJzcjg1cHgzYjFtYSJ9.5WCLBT_KSghCcRtzH3xreQ";
-
-async function geocode(query: string): Promise<[number, number] | null> {
-  try {
-    const q = encodeURIComponent(query + ", Ghana");
-    const res = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${q}.json?access_token=${TOKEN}&country=GH&limit=1&proximity=${ACCRA[0]},${ACCRA[1]}`
-    );
-    const json = await res.json();
-    const coords = json.features?.[0]?.geometry?.coordinates;
-    return coords ? [coords[0], coords[1]] : null;
-  } catch { return null; }
-}
-
-async function getRoute(from: [number, number], to: [number, number]): Promise<[number, number][]> {
-  try {
-    const res = await fetch(
-      `https://api.mapbox.com/directions/v5/mapbox/driving/${from[0]},${from[1]};${to[0]},${to[1]}?geometries=geojson&overview=full&access_token=${TOKEN}`
-    );
-    const json = await res.json();
-    return json.routes?.[0]?.geometry?.coordinates ?? [from, to];
-  } catch { return [from, to]; }
-}
-
-function interpolate(coords: [number, number][], t: number): [number, number] {
-  if (coords.length < 2) return coords[0] ?? ACCRA;
-  const total = coords.length - 1;
-  const idx = Math.min(Math.floor(t * total), total - 1);
-  const frac = t * total - idx;
-  const a = coords[idx], b = coords[idx + 1];
-  return [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac];
-}
-
-function calcBearing([lng1, lat1]: [number, number], [lng2, lat2]: [number, number]): number {
-  const r = Math.PI / 180;
-  const dLng = (lng2 - lng1) * r;
-  const la1 = lat1 * r, la2 = lat2 * r;
-  const y = Math.sin(dLng) * Math.cos(la2);
-  const x = Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dLng);
-  return (Math.atan2(y, x) / r + 360) % 360;
-}
-
+// -------- Animated SVG Map --------
 const STATUS_PROGRESS: Record<OrderStatus, number> = {
-  pending: 0, searching_rider: 0.05, confirmed: 0.15, assigned: 0.2, accepted: 0.25,
-  preparing: 0.3, picked_up: 0.5, in_transit: 0.75, delivered: 1, cancelled: 0,
+  pending: 0, searching_rider: 0.04, confirmed: 0.15, assigned: 0.2, accepted: 0.25,
+  preparing: 0.35, picked_up: 0.5, in_transit: 0.78, delivered: 1, cancelled: 0,
 };
+
+// Bezier curve helpers
+const P0: [number,number] = [52, 208];   // pickup (bottom-left)
+const P1: [number,number] = [145, 218];  // control 1
+const P2: [number,number] = [272, 52];   // control 2
+const P3: [number,number] = [388, 72];   // delivery (top-right)
+const ROUTE_D = `M${P0[0]},${P0[1]} C${P1[0]},${P1[1]} ${P2[0]},${P2[1]} ${P3[0]},${P3[1]}`;
+
+function bpt(t: number): [number,number] {
+  const m = 1-t;
+  return [
+    m**3*P0[0]+3*m**2*t*P1[0]+3*m*t**2*P2[0]+t**3*P3[0],
+    m**3*P0[1]+3*m**2*t*P1[1]+3*m*t**2*P2[1]+t**3*P3[1],
+  ];
+}
+function bangle(t: number): number {
+  const m = 1-t;
+  const dx = 3*m**2*(P1[0]-P0[0])+6*m*t*(P2[0]-P1[0])+3*t**2*(P3[0]-P2[0]);
+  const dy = 3*m**2*(P1[1]-P0[1])+6*m*t*(P2[1]-P1[1])+3*t**2*(P3[1]-P2[1]);
+  return Math.atan2(dy, dx) * 180 / Math.PI;
+}
 
 const MapView = ({
   status, pickupAddress, deliveryAddress, userCoords,
@@ -164,217 +137,132 @@ const MapView = ({
   deliveryAddress: string;
   userCoords: [number, number] | null;
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
-  const riderMarkerRef = useRef<mapboxgl.Marker | null>(null);
-  const routeCoordsRef = useRef<[number, number][]>([]);
-  const animFrameRef = useRef<number>(0);
-  const progressRef = useRef(0);
-  const [mapFailed, setMapFailed] = useState(false);
-  const [mapReady, setMapReady] = useState(false);
-  const gpsUsedRef = useRef(false);
+  const tRef = useRef(STATUS_PROGRESS[status] ?? 0);
+  const [riderT, setRiderT] = useState(STATUS_PROGRESS[status] ?? 0);
+  const frameRef = useRef(0);
 
-  // Build map — rebuilds once when GPS coords arrive
   useEffect(() => {
-    if (!containerRef.current) return;
-
-    // GPS just arrived and map was built without it — tear down to rebuild
-    if (userCoords && !gpsUsedRef.current && mapRef.current) {
-      cancelAnimationFrame(animFrameRef.current);
-      mapRef.current.remove();
-      mapRef.current = null;
-    }
-    if (mapRef.current) return;
-    if (userCoords) gpsUsedRef.current = true;
-
-    const initialCenter = userCoords ?? ACCRA;
-
-    let map: mapboxgl.Map;
-    try {
-      map = new mapboxgl.Map({
-        container: containerRef.current,
-        style: "mapbox://styles/mapbox/streets-v12",
-        center: initialCenter,
-        zoom: 13,
-        attributionControl: false,
-      });
-    } catch {
-      setMapFailed(true);
-      return;
-    }
-    // Catch any map error (auth, network, style, WebGL, etc.)
-    map.on("error", () => { setMapFailed(true); });
-    mapRef.current = map;
-
-    // Fallback: if map hasn't loaded within 12s, show the animated fallback
-    const loadTimeout = setTimeout(() => {
-      if (!mapRef.current) return;
-      setMapFailed(true);
-    }, 12000);
-
-    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
-
-    // Force canvas to match container size whenever layout shifts
-    const ro = new ResizeObserver(() => { try { map.resize(); } catch { /* ignore pre-load */ } });
-    ro.observe(containerRef.current);
-
-    map.on("load", async () => {
-      clearTimeout(loadTimeout);
-      map.resize();
-      setMapReady(true);
-      // Pickup: geocode address
-      let pickup = (await geocode(pickupAddress)) ?? [ACCRA[0] - 0.02, ACCRA[1] - 0.01] as [number, number];
-      if (!isFinite(pickup[0]) || !isFinite(pickup[1])) pickup = [ACCRA[0] - 0.02, ACCRA[1] - 0.01];
-
-      // Delivery: use real GPS if available, otherwise geocode the typed address
-      let delivery: [number, number] = userCoords
-        ?? (await geocode(deliveryAddress))
-        ?? [ACCRA[0] + 0.025, ACCRA[1] + 0.018] as [number, number];
-      if (!isFinite(delivery[0]) || !isFinite(delivery[1])) delivery = [ACCRA[0] + 0.025, ACCRA[1] + 0.018];
-
-      const route = await getRoute(pickup, delivery);
-      routeCoordsRef.current = route.filter(([x,y]) => isFinite(x) && isFinite(y));
-
-      // Route line
-      map.addSource("route", {
-        type: "geojson",
-        data: { type: "Feature", geometry: { type: "LineString", coordinates: route }, properties: {} },
-      });
-      map.addLayer({
-        id: "route-line",
-        type: "line",
-        source: "route",
-        layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#ef4444", "line-width": 4, "line-opacity": 0.85 },
-      });
-
-      // Pickup marker (green)
-      const pickupEl = document.createElement("div");
-      pickupEl.innerHTML = `<div style="background:#22c55e;width:36px;height:36px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)"><div style="transform:rotate(45deg);display:flex;align-items:center;justify-content:center;height:100%;font-size:14px">🏪</div></div>`;
-      new mapboxgl.Marker({ element: pickupEl, anchor: "bottom" })
-        .setLngLat(pickup)
-        .setPopup(new mapboxgl.Popup({ offset: 25 }).setText("Pickup"))
-        .addTo(map);
-
-      // Delivery marker (red) — pulse ring when GPS is active
-      const deliveryEl = document.createElement("div");
-      deliveryEl.innerHTML = userCoords
-        ? `<div style="position:relative"><div style="background:#ef4444;width:20px;height:20px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div><div style="position:absolute;inset:-6px;border-radius:50%;border:2px solid #ef4444;animation:ping 1.2s ease-out infinite;opacity:0.6"></div></div>`
-        : `<div style="background:#ef4444;width:36px;height:36px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)"><div style="transform:rotate(45deg);display:flex;align-items:center;justify-content:center;height:100%;font-size:14px">🏠</div></div>`;
-      new mapboxgl.Marker({ element: deliveryEl, anchor: userCoords ? "center" : "bottom" })
-        .setLngLat(delivery)
-        .setPopup(new mapboxgl.Popup({ offset: 25 }).setText(userCoords ? "📍 Your live location" : "Your location"))
-        .addTo(map);
-
-      // Rider marker
-      const riderEl = document.createElement("div");
-      riderEl.style.cssText = "font-size:28px;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.5));transition:transform 0.3s;cursor:pointer;";
-      riderEl.textContent = "🏍️";
-      const riderMarker = new mapboxgl.Marker({ element: riderEl, anchor: "center" })
-        .setLngLat(pickup)
-        .addTo(map);
-      riderMarkerRef.current = riderMarker;
-
-      // Fit map to show full route
-      const bounds = route.reduce(
-        (b, c) => b.extend(c as [number, number]),
-        new mapboxgl.LngLatBounds(route[0], route[0])
-      );
-      map.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 1200 });
-
-      // Start animation
-      animateRider();
-    });
-
-    return () => {
-      clearTimeout(loadTimeout);
-      ro.disconnect();
-      cancelAnimationFrame(animFrameRef.current);
-      map.remove();
-      mapRef.current = null;
+    const goal = STATUS_PROGRESS[status] ?? 0;
+    const tick = () => {
+      const diff = goal - tRef.current;
+      if (Math.abs(diff) > 0.001) {
+        tRef.current += diff * 0.035;
+        setRiderT(tRef.current);
+        frameRef.current = requestAnimationFrame(tick);
+      } else {
+        tRef.current = goal;
+        setRiderT(goal);
+      }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userCoords]);
-
-  // Animate rider toward target progress
-  const animateRider = useCallback(() => {
-    const target = STATUS_PROGRESS[status] ?? 0;
-    const coords = routeCoordsRef.current;
-    if (coords.length > 1) {
-      const diff = target - progressRef.current;
-      progressRef.current += diff * 0.02;
-      const pos = interpolate(coords, progressRef.current);
-      riderMarkerRef.current?.setLngLat(pos);
-
-      // Rotate emoji so front wheel faces direction of travel
-      const aheadT = Math.min(progressRef.current + 0.02, 1);
-      const ahead = interpolate(coords, aheadT);
-      const travelBearing = calcBearing(pos, ahead);
-      const mapBearing = mapRef.current?.getBearing() ?? 0;
-      const el = riderMarkerRef.current?.getElement();
-      if (el) el.style.transform = `rotate(${travelBearing - mapBearing - 90}deg)`;
-    }
-    animFrameRef.current = requestAnimationFrame(animateRider);
+    cancelAnimationFrame(frameRef.current);
+    frameRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameRef.current);
   }, [status]);
 
-  // Re-run animation loop when status changes
-  useEffect(() => {
-    cancelAnimationFrame(animFrameRef.current);
-    animFrameRef.current = requestAnimationFrame(animateRider);
-    return () => cancelAnimationFrame(animFrameRef.current);
-  }, [animateRider]);
-
-  const isActive = status !== "pending" && status !== "cancelled";
+  const [rx, ry] = bpt(riderT);
+  const angle = bangle(riderT);
+  const isActive = status !== "pending" && status !== "searching_rider" && status !== "cancelled";
 
   return (
     <div className="relative w-full overflow-hidden rounded-3xl shadow-lg" style={{ height: 260 }}>
-      {/* Map canvas */}
-      <div ref={containerRef} className="absolute inset-0" style={{ opacity: mapFailed ? 0 : 1 }}/>
+      <svg width="100%" height="260" viewBox="0 0 440 260" preserveAspectRatio="xMidYMid slice" style={{ display:"block" }}>
+        <defs>
+          <linearGradient id="mapBg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#0f172a"/>
+            <stop offset="100%" stopColor="#162032"/>
+          </linearGradient>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="2.5" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
 
-      {/* Loading shimmer while map tiles load */}
-      {!mapReady && !mapFailed && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2"
-          style={{ background: "linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%)" }}>
-          <div className="text-4xl animate-bounce">🏍️</div>
-          <p className="text-white/70 text-xs font-semibold">Loading map…</p>
-        </div>
-      )}
+        {/* Background */}
+        <rect width="440" height="260" fill="url(#mapBg)"/>
 
-      {/* Fallback when map can't load */}
-      {mapFailed && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2"
-          style={{ background: "linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%)" }}>
-          <div className="text-5xl mb-1">🗺️</div>
-          <p className="text-white font-bold text-sm">Live map loading…</p>
-          <p className="text-white/50 text-xs text-center px-8">Rider is being tracked</p>
-          {isActive && (
-            <div className="mt-2 flex items-center gap-2 rounded-full bg-primary/80 px-4 py-2 text-xs font-semibold text-white">
-              <span className="animate-bounce">🏍️</span> Rider en route
-            </div>
-          )}
-        </div>
-      )}
+        {/* City blocks */}
+        {([
+          [20,18,58,82],[88,18,62,52],[164,18,60,42],[238,18,70,54],[320,18,54,46],[385,18,46,56],
+          [20,112,58,72],[88,82,60,54],[164,80,60,56],[238,80,70,52],[320,76,54,50],[385,83,46,46],
+          [20,196,58,58],[88,148,62,70],[164,148,60,68],[238,146,70,66],[320,138,54,68],[385,141,46,62],
+        ] as [number,number,number,number][]).map(([x,y,w,h],i) => (
+          <rect key={i} x={x} y={y} width={w} height={h} rx={3} fill="#1e293b" opacity="0.9"/>
+        ))}
 
-      {/* GPS active badge */}
-      {userCoords && !mapFailed && (
-        <div className="absolute top-3 left-3 flex items-center gap-1.5 rounded-full bg-black/60 backdrop-blur-sm px-2.5 py-1 pointer-events-none">
-          <div className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse"/>
-          <span className="text-[10px] font-semibold text-white">Live location</span>
-        </div>
-      )}
+        {/* Streets horizontal */}
+        <rect x="0" y="76" width="440" height="10" fill="#0d1f35"/>
+        <rect x="0" y="142" width="440" height="10" fill="#0d1f35"/>
+        <rect x="0" y="212" width="440" height="10" fill="#0d1f35"/>
+        {/* Streets vertical */}
+        <rect x="82" y="0" width="10" height="260" fill="#0d1f35"/>
+        <rect x="158" y="0" width="10" height="260" fill="#0d1f35"/>
+        <rect x="232" y="0" width="10" height="260" fill="#0d1f35"/>
+        <rect x="312" y="0" width="10" height="260" fill="#0d1f35"/>
+        <rect x="379" y="0" width="10" height="260" fill="#0d1f35"/>
 
-      {/* Status pill overlay */}
-      <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-none">
-        <div className="flex items-center gap-1.5 rounded-full bg-white/90 backdrop-blur-sm px-3 py-1.5 shadow text-xs font-semibold text-green-700">
-          <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"/> Pickup
-        </div>
-        {isActive && !mapFailed && (
-          <div className="flex items-center gap-1.5 rounded-full bg-primary/90 backdrop-blur-sm px-3 py-1.5 shadow text-xs font-semibold text-white">
-            🏍️ Rider en route
+        {/* Street centre dashes */}
+        {[87,163,237,317,384].map(x => (
+          <line key={`v${x}`} x1={x} y1="0" x2={x} y2="260" stroke="#1e3a5f" strokeWidth="1" strokeDasharray="10,9"/>
+        ))}
+        {[81,147,217].map(y => (
+          <line key={`h${y}`} x1="0" y1={y} x2="440" y2={y} stroke="#1e3a5f" strokeWidth="1" strokeDasharray="10,9"/>
+        ))}
+
+        {/* Street lamps */}
+        {[87,163,237,317].map(x => (
+          <circle key={`lamp${x}`} cx={x} cy={75} r="3.5" fill="#fbbf24" opacity="0.75"/>
+        ))}
+
+        {/* Full route ghost */}
+        <path d={ROUTE_D} stroke="#ef4444" strokeWidth="3" fill="none" strokeOpacity="0.2" strokeDasharray="8,6"/>
+
+        {/* Traveled portion */}
+        <path d={ROUTE_D} stroke="#ef4444" strokeWidth="4" fill="none"
+          strokeDasharray="500" strokeDashoffset={500 - riderT * 460}
+          strokeLinecap="round" opacity="0.9" filter="url(#glow)"/>
+
+        {/* Pickup pin */}
+        <circle cx={P0[0]} cy={P0[1]} r="20" fill="#15803d" opacity="0.9"/>
+        <circle cx={P0[0]} cy={P0[1]} r="15" fill="#22c55e"/>
+        <text x={P0[0]} y={P0[1]} fontSize="15" textAnchor="middle" dominantBaseline="middle">🏪</text>
+
+        {/* Delivery pin */}
+        <circle cx={P3[0]} cy={P3[1]} r="20" fill="#b91c1c" opacity="0.9"/>
+        <circle cx={P3[0]} cy={P3[1]} r="15" fill="#ef4444"/>
+        <text x={P3[0]} y={P3[1]} fontSize="15" textAnchor="middle" dominantBaseline="middle">{userCoords ? "📍" : "🏠"}</text>
+
+        {/* Rider shadow */}
+        <ellipse cx={rx+3} cy={ry+5} rx="15" ry="8" fill="#000" opacity="0.25"/>
+
+        {/* Rider */}
+        <g transform={`translate(${rx},${ry}) rotate(${angle})`}>
+          <text fontSize="28" textAnchor="middle" dominantBaseline="middle"
+            style={{ filter:"drop-shadow(0 2px 6px rgba(0,0,0,0.7))", userSelect:"none" }}>🏍️</text>
+        </g>
+      </svg>
+
+      {/* Top badge */}
+      <div className="absolute top-3 right-3 pointer-events-none">
+        {isActive ? (
+          <div className="flex items-center gap-1.5 rounded-full bg-black/60 backdrop-blur-sm px-2.5 py-1">
+            <div className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse"/>
+            <span className="text-[10px] font-semibold text-white">Live tracking</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 rounded-full bg-black/60 backdrop-blur-sm px-2.5 py-1">
+            <div className="h-1.5 w-1.5 rounded-full bg-yellow-400 animate-pulse"/>
+            <span className="text-[10px] font-semibold text-white">Finding rider…</span>
           </div>
         )}
-        <div className="flex items-center gap-1.5 rounded-full bg-white/90 backdrop-blur-sm px-3 py-1.5 shadow text-xs font-semibold text-red-600">
-          <div className="h-2 w-2 rounded-full bg-red-500"/> {userCoords ? "📍 You" : "You"}
+      </div>
+
+      {/* Address labels */}
+      <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-none">
+        <div className="flex items-center gap-1 rounded-full bg-green-600/90 backdrop-blur-sm px-2.5 py-1 shadow text-[11px] font-semibold text-white max-w-[44%] truncate">
+          🏪 {pickupAddress || "Pickup"}
+        </div>
+        <div className="flex items-center gap-1 rounded-full bg-red-600/90 backdrop-blur-sm px-2.5 py-1 shadow text-[11px] font-semibold text-white max-w-[44%] truncate">
+          {userCoords ? "📍 You" : `🏠 ${deliveryAddress || "Delivery"}`}
         </div>
       </div>
     </div>
