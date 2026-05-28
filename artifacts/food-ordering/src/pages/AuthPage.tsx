@@ -117,7 +117,7 @@ const AuthPage = () => {
   // Step 2: verify OTP → sign in
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (otpCode.length < 4) { toast.error("Enter the 6-digit code"); return; }
+    if (otpCode.length < 6) { toast.error("Enter the full 6-digit code"); return; }
     setLoading(true);
     const { error } = await verifyOtp(signupPhone.trim(), otpCode.trim());
     if (error) {
