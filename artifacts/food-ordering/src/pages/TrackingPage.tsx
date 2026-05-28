@@ -816,19 +816,18 @@ const TrackingPage = () => {
             onClick={async () => {
               if (!window.confirm("Cancel this order?")) return;
               try {
-                // Try direct DB update first (works if RLS allows it)
-                const { error: dbErr } = await (supabase as any)
+                const { error: dbErr, data: updated } = await (supabase as any)
                   .from("orders")
                   .update({ status: "cancelled" })
                   .eq("id", id)
-                  .eq("status", "pending");
+                  .eq("status", "pending")
+                  .select("id, status");
 
-                if (dbErr) {
-                  // Fallback: try edge function
-                  const { error: fnErr } = await supabase.functions.invoke("cancel-order", {
-                    body: { order_id: id, reason: "Customer cancelled" },
-                  });
-                  if (fnErr) throw new Error("Cancel failed — please contact support.");
+                if (dbErr) throw new Error(dbErr.message);
+
+                // If no rows returned, RLS silently blocked it
+                if (!updated || updated.length === 0) {
+                  throw new Error("Permission denied — order could not be cancelled. Make sure you are logged in and the order is still pending.");
                 }
 
                 toast.success("Order cancelled.");
