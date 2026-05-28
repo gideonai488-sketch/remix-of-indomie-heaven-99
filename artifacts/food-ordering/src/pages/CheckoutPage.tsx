@@ -106,6 +106,7 @@ const CheckoutPage = () => {
         ...(isUuid(ci.item.id) ? { item_id: ci.item.id } : {}),
         item_name: ci.item.name,
         quantity: ci.quantity,
+        unit_price: ci.item.price,
         price: ci.item.price,
       }));
       const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
