@@ -27,11 +27,11 @@ const PromoBanner = () => {
   const [current, setCurrent] = useState(0);
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
 
-  // Fetch from Supabase Storage bucket "banners" on mount
+  // Fetch from Supabase Storage bucket "promo videos" on mount
   useEffect(() => {
     const load = async () => {
       try {
-        const { data: files, error } = await supabase.storage.from("banners").list("", { limit: 20 });
+        const { data: files, error } = await supabase.storage.from("promo videos").list("", { limit: 20 });
         if (error || !files || files.length === 0) {
           setSlides(fallbackVideos);
           return;
@@ -46,7 +46,7 @@ const PromoBanner = () => {
           return;
         }
         const mapped: BannerSlide[] = mediaFiles.map((f) => {
-          const { data } = supabase.storage.from("banners").getPublicUrl(f.name);
+          const { data } = supabase.storage.from("promo videos").getPublicUrl(f.name);
           // Try to parse a friendly label from filename: "my-banner_hello world.mp4" -> "Hello World"
           const base = f.name.split(".")[0].replace(/[_-]/g, " ");
           const label = base.replace(/\b\w/g, (c) => c.toUpperCase());
