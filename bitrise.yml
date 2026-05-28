@@ -2,15 +2,18 @@ format_version: "13"
 default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  SpeedUp iOS — TestFlight Distribution
+#  SpeedUp iOS — Fully Automated TestFlight Pipeline
 #
-#  Prerequisites (one-time setup in Bitrise UI):
-#    1. Code Signing → upload Distribution .p12 certificate
-#    2. Code Signing → upload App Store provisioning profile
-#    3. Code Signing → add App Store Connect API key
-#    4. Set BITRISE_APPLE_TEAM_ID secret (your 10-char Apple Team ID)
+#  ONE-TIME setup in Bitrise UI (nothing else to do manually ever):
+#    1. Connect your Apple account via API key:
+#       Bitrise Dashboard → Your App → Code Signing → Apple API Keys
+#       → paste your App Store Connect API key (issuer ID + key ID + .p8 file)
+#       → set the key's role to "Admin" in App Store Connect
 #
-#  Trigger: push to main  OR  manual run from Bitrise dashboard
+#    2. Set these Secrets in Bitrise → Your App → Secrets:
+#       BITRISE_APPLE_TEAM_ID  →  your 10-character Apple Team ID (e.g. ABC123DEFG)
+#
+#  That's it. Certs, profiles, and signing are all handled automatically.
 # ─────────────────────────────────────────────────────────────────────────────
 
 app:
@@ -18,6 +21,7 @@ app:
     - BITRISE_PROJECT_PATH: artifacts/food-ordering/ios/App/App.xcworkspace
     - BITRISE_SCHEME: App
     - BITRISE_DISTRIBUTION_METHOD: app-store
+    - BUNDLE_ID: com.speedupp.app
     - NODE_VERSION: "22"
     - VITE_SUPABASE_URL: "https://cgadnsuyezixjdrjkbvb.supabase.co"
     - VITE_SUPABASE_PUBLISHABLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNnYWRuc3V5ZXppeGpkcmprYnZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4MjI0OTgsImV4cCI6MjA5NTM5ODQ5OH0.kePPhpHopt1Ks5MjnjTQLyAPXwsGnAVGx8Xv2HMBuGY"
@@ -29,7 +33,7 @@ trigger_map:
 
 workflows:
 
-  # ── Shared setup (reused by both workflows) ──────────────────────────────
+  # ── Shared: clone + JS build + Capacitor sync ────────────────────────────
   _setup:
     steps:
       - activate-ssh-key@4: {}
@@ -53,7 +57,7 @@ workflows:
                 pnpm install
 
       - script@1:
-          title: Build web assets (Capacitor)
+          title: Build web assets (Vite → Capacitor)
           inputs:
             - content: |
                 #!/usr/bin/env bash
@@ -72,47 +76,74 @@ workflows:
                 cd artifacts/food-ordering
                 npx cap sync ios
 
+      - script@1:
+          title: Generate iOS icons from owl icon
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -euo pipefail
+                cd artifacts/food-ordering
+                npx @capacitor/assets@latest generate \
+                  --iconBackgroundColor '#ef4444' \
+                  --iconBackgroundColorDark '#ef4444' \
+                  --splashBackgroundColor '#ffffff' \
+                  --splashBackgroundColorDark '#121212' \
+                  --ios
+
       - cocoapods-install@2:
           inputs:
             - podfile_path: artifacts/food-ordering/ios/App/Podfile
             - verbose: "false"
 
-  # ── Deploy to TestFlight ─────────────────────────────────────────────────
+  # ── Deploy to TestFlight (fully automated signing) ───────────────────────
   deploy-testflight:
     before_run:
       - _setup
     steps:
 
-      # Bump build number — every upload to App Store Connect needs a unique number
+      # Bump build + version numbers automatically
       - set-xcode-build-number@1:
           inputs:
             - plist_path: artifacts/food-ordering/ios/App/App/Info.plist
             - build_short_version_string: "1.0"
-            - build_version: $BITRISE_BUILD_NUMBER
+            - build_version: $BITRISE_BUILD_NUMBER   # auto-increments each Bitrise build
 
-      # Archive IPA with app-store distribution method
+      # ── FULLY AUTOMATED SIGNING ──────────────────────────────────────────
+      # Connects to App Store Connect API, creates/rotates the Distribution
+      # certificate and App Store provisioning profile automatically.
+      # No manual cert or profile uploads ever needed.
+      - manage-ios-code-signing@2:
+          inputs:
+            - apple_service_connection: api-key    # uses the API key you added in Bitrise UI
+            - distribution_method: app-store
+            - project_path: $BITRISE_PROJECT_PATH
+            - scheme: $BITRISE_SCHEME
+            - sign_uitest_targets: "false"
+            - register_test_devices: "false"       # set true to auto-register test devices
+
+      # Archive and export the signed IPA
       - xcode-archive@5:
           inputs:
             - project_path: $BITRISE_PROJECT_PATH
             - scheme: $BITRISE_SCHEME
-            - distribution_method: $BITRISE_DISTRIBUTION_METHOD
+            - distribution_method: app-store
             - automatic_code_signing: api-key
             - configuration: Release
             - output_tool: xcpretty
 
-      # Upload IPA to App Store Connect → TestFlight
+      # Upload IPA → App Store Connect → TestFlight
       - deploy-to-itunesconnect-application-loader@1:
           inputs:
             - connection: api_key
             - itunescon_user: ""
             - password: ""
 
-      # Save IPA as downloadable artifact on Bitrise build page
+      # Save IPA as artifact on the Bitrise build page
       - deploy-to-bitrise-io@2:
           inputs:
             - is_enable_public_page: "false"
 
-  # ── PR / CI check — build for simulator only, no upload ─────────────────
+  # ── PR / CI check — simulator build only, no TestFlight upload ──────────
   primary:
     before_run:
       - _setup
@@ -122,5 +153,6 @@ workflows:
             - project_path: $BITRISE_PROJECT_PATH
             - scheme: $BITRISE_SCHEME
             - simulator_device: iPhone 15
+            - automatic_code_signing: api-key
 
       - deploy-to-bitrise-io@2: {}
