@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { CartProvider } from "@/context/CartContext";
 import { AuthProvider } from "@/context/AuthContext";
 import { lazy, Suspense, useEffect, Component, ReactNode } from "react";
@@ -78,39 +78,48 @@ const HomeRoute = () => {
   return <Index />;
 };
 
-const App = () => (
-  <AppErrorBoundary>
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <AuthProvider>
-          <CartProvider>
-            <SplashDismisser />
-            <PushRegistrar />
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
-              <Suspense fallback={<AppLoadingSkeleton />}>
-                <Routes>
-                  <Route path="/onboarding" element={<OnboardingPage />} />
-                  <Route path="/" element={<HomeRoute />} />
-                  <Route path="/menu" element={<MenuPage />} />
-                  <Route path="/orders" element={<OrdersPage />} />
-                  <Route path="/auth" element={<AuthPage />} />
-                  <Route path="/profile" element={<ProfilePage />} />
-                  <Route path="/checkout" element={<CheckoutPage />} />
-                  <Route path="/services" element={<ServicesPage />} />
-                  <Route path="/service-request/:type" element={<ServiceRequestPage />} />
-                  <Route path="/track/:id" element={<TrackingPage />} />
-                  <Route path="/demo" element={<DemoTrackingPage />} />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </Suspense>
-            </BrowserRouter>
-          </CartProvider>
-        </AuthProvider>
-      </TooltipProvider>
-    </QueryClientProvider>
-  </AppErrorBoundary>
-);
+const App = () => {
+  // In a Capacitor AAB build (no http://localhost server) BrowserRouter
+  // can't handle deep links because the native WebView serves the bundled
+  // files from file://.  HashRouter is required for native AAB builds.
+  const isCapacitor = window.location.protocol === "file:" ||
+    (navigator as any).userAgent?.includes("Capacitor");
+  const Router = isCapacitor ? HashRouter : BrowserRouter;
+
+  return (
+    <AppErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <AuthProvider>
+            <CartProvider>
+              <SplashDismisser />
+              <PushRegistrar />
+              <Toaster />
+              <Sonner />
+              <Router>
+                <Suspense fallback={<AppLoadingSkeleton />}>
+                  <Routes>
+                    <Route path="/onboarding" element={<OnboardingPage />} />
+                    <Route path="/" element={<HomeRoute />} />
+                    <Route path="/menu" element={<MenuPage />} />
+                    <Route path="/orders" element={<OrdersPage />} />
+                    <Route path="/auth" element={<AuthPage />} />
+                    <Route path="/profile" element={<ProfilePage />} />
+                    <Route path="/checkout" element={<CheckoutPage />} />
+                    <Route path="/services" element={<ServicesPage />} />
+                    <Route path="/service-request/:type" element={<ServiceRequestPage />} />
+                    <Route path="/track/:id" element={<TrackingPage />} />
+                    <Route path="/demo" element={<DemoTrackingPage />} />
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </Suspense>
+              </Router>
+            </CartProvider>
+          </AuthProvider>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </AppErrorBoundary>
+  );
+};
 
 export default App;

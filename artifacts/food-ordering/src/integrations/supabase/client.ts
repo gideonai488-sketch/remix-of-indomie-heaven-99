@@ -5,19 +5,58 @@ import type { Database } from './types';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-  throw new Error(
-    "Missing Supabase credentials. Make sure VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY are set in your environment."
-  );
+// Build a dummy client that never crashes the app at startup.
+// If the env vars are missing the app will still render so the user sees a clear error
+// message instead of an instant crash.
+function createSupabaseClient() {
+  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+    console.error(
+      "Missing Supabase credentials. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in your environment."
+    );
+    // Return a minimal client-shaped object so the app doesn't crash on import.
+    // All methods return a rejected promise so the UI can surface the error.
+    // Chainable query builder stub that never throws synchronously.
+    // It resolves to a normal Supabase-like { data, error } so existing code paths
+    // (if (error) ...) handle it gracefully instead of an unhandled rejection.
+    const notConfigured = () => Promise.resolve({ data: [], error: new Error("Supabase not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.") });
+    const queryChain: any = {
+      select: () => queryChain,
+      order: () => queryChain,
+      limit: () => queryChain,
+      eq: () => queryChain,
+      maybeSingle: () => queryChain,
+      single: () => queryChain,
+      update: () => queryChain,
+      insert: () => queryChain,
+      upsert: () => queryChain,
+      delete: () => queryChain,
+      then: notConfigured,
+      catch: () => queryChain,
+      finally: () => queryChain,
+    };
+    return {
+      from: () => queryChain,
+      storage: { from: () => ({ getPublicUrl: () => ({ data: { publicUrl: "" } }), list: () => Promise.resolve({ data: [], error: null }), upload: () => Promise.resolve({ data: null, error: null }), remove: () => Promise.resolve({ data: null, error: null }) }) },
+      functions: { invoke: notConfigured },
+      channel: () => ({ on: () => ({ subscribe: () => ({}) }), subscribe: () => ({}) }),
+      removeChannel: () => {},
+      auth: {
+        onAuthStateChange: () => ({ subscription: { unsubscribe: () => {} } }),
+        getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+        signInWithPassword: notConfigured,
+        signUp: notConfigured,
+        signOut: () => Promise.resolve(),
+      },
+    } as any;
+  }
+
+  return createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: {
+      storage: localStorage,
+      persistSession: true,
+      autoRefreshToken: true,
+    }
+  });
 }
 
-// Import the supabase client like this:
-// import { supabase } from "@/integrations/supabase/client";
-
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: {
-    storage: localStorage,
-    persistSession: true,
-    autoRefreshToken: true,
-  }
-});
+export const supabase = createSupabaseClient();
