@@ -20,6 +20,7 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const ServicesPage = lazy(() => import("./pages/ServicesPage"));
 const ServiceRequestPage = lazy(() => import("./pages/ServiceRequestPage"));
 const TrackingPage = lazy(() => import("./pages/TrackingPage"));
+const DemoTrackingPage = lazy(() => import("./pages/DemoTrackingPage"));
 
 const AdminLayout = lazy(() => import("./components/admin/AdminLayout"));
 const DashboardPage = lazy(() => import("./pages/admin/DashboardPage"));
@@ -76,6 +77,7 @@ const App = () => (
                 <Route path="/services" element={<ServicesPage />} />
                 <Route path="/service-request/:type" element={<ServiceRequestPage />} />
                 <Route path="/track/:id" element={<TrackingPage />} />
+                <Route path="/demo" element={<DemoTrackingPage />} />
                 {showAdmin && (
                   <Route path="/admin" element={<AdminLayout />}>
                     <Route index element={<DashboardPage />} />
