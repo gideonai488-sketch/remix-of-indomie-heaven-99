@@ -99,18 +99,32 @@ const CheckoutPage = () => {
 
       if (orderErr) throw orderErr;
 
-      // 2. Insert order items
+      // 2. Insert order items — use raw fetch so unit_price is never stripped
       const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
       const orderItems = items.map((ci) => ({
         order_id: order.id,
         ...(isUuid(ci.item.id) ? { item_id: ci.item.id } : {}),
         item_name: ci.item.name,
         quantity: ci.quantity,
-        unit_price: ci.item.price,
-        price: ci.item.price,
+        unit_price: Number(ci.item.price),
+        price: Number(ci.item.price),
       }));
-      const { error: itemsErr } = await (supabase as any).from("order_items").insert(orderItems);
-      if (itemsErr) throw itemsErr;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+      const itemsRes = await fetch(`${supabaseUrl}/rest/v1/order_items`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": supabaseKey,
+          "Authorization": `Bearer ${supabaseKey}`,
+          "Prefer": "return=minimal",
+        },
+        body: JSON.stringify(orderItems),
+      });
+      if (!itemsRes.ok) {
+        const errBody = await itemsRes.json().catch(() => ({}));
+        throw new Error(errBody.message || `order_items insert failed (${itemsRes.status})`);
+      }
 
       // 3. Dispatch rider — finds nearest verified rider
       await supabase.functions.invoke("dispatch-rider", {

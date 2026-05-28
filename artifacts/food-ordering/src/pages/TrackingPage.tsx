@@ -141,6 +141,15 @@ function interpolate(coords: [number, number][], t: number): [number, number] {
   return [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac];
 }
 
+function calcBearing([lng1, lat1]: [number, number], [lng2, lat2]: [number, number]): number {
+  const r = Math.PI / 180;
+  const dLng = (lng2 - lng1) * r;
+  const la1 = lat1 * r, la2 = lat2 * r;
+  const y = Math.sin(dLng) * Math.cos(la2);
+  const x = Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dLng);
+  return (Math.atan2(y, x) / r + 360) % 360;
+}
+
 const STATUS_PROGRESS: Record<OrderStatus, number> = {
   pending: 0, confirmed: 0.15, preparing: 0.3, delivering: 0.65, delivered: 1, cancelled: 0,
 };
@@ -252,11 +261,19 @@ const MapView = ({
   const animateRider = useCallback(() => {
     const target = STATUS_PROGRESS[status] ?? 0;
     const coords = routeCoordsRef.current;
-    if (coords.length > 0) {
+    if (coords.length > 1) {
       const diff = target - progressRef.current;
       progressRef.current += diff * 0.02;
       const pos = interpolate(coords, progressRef.current);
       riderMarkerRef.current?.setLngLat(pos);
+
+      // Rotate emoji so front wheel faces direction of travel
+      const aheadT = Math.min(progressRef.current + 0.02, 1);
+      const ahead = interpolate(coords, aheadT);
+      const travelBearing = calcBearing(pos, ahead);
+      const mapBearing = mapRef.current?.getBearing() ?? 0;
+      const el = riderMarkerRef.current?.getElement();
+      if (el) el.style.transform = `rotate(${travelBearing - mapBearing - 90}deg)`;
     }
     animFrameRef.current = requestAnimationFrame(animateRider);
   }, [status]);
