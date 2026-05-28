@@ -89,7 +89,7 @@ const CheckoutPage = () => {
           customer_phone: customerPhone.trim(),
           total_amount: finalTotal,
           delivery_fee: deliveryFee,
-          payment_method: "pay_on_delivery",
+          payment_method: "cash_on_delivery",
           notes: notes.trim() || null,
           status: "pending",
           payment_status: "pending",
