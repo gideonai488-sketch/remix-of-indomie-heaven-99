@@ -6,6 +6,7 @@ import {
   ShoppingCart,
   UtensilsCrossed,
   Users,
+  Megaphone,
   LogOut,
   ChevronLeft,
   Menu,
@@ -18,6 +19,7 @@ const navItems = [
   { to: "/admin/orders", label: "Orders", icon: ShoppingCart },
   { to: "/admin/menu", label: "Menu", icon: UtensilsCrossed },
   { to: "/admin/customers", label: "Customers", icon: Users },
+  { to: "/admin/banners", label: "Promo Banners", icon: Megaphone },
 ];
 
 const AdminLayout = () => {
