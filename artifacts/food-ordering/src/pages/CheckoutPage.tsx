@@ -133,9 +133,9 @@ const CheckoutPage = () => {
         body: { order_id: order.id },
       }).catch(() => {}); // non-fatal if edge fn fails
 
+      navigate(`/track/${order.id}?type=food`, { replace: true });
       clearCart();
       toast.success("Order placed! Finding you a rider… 🏍️");
-      navigate(`/track/${order.id}?type=food`);
     } catch (e: any) {
       toast.error(e.message || "Failed to place order");
     }

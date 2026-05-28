@@ -21,10 +21,11 @@ const ServicesPage = lazy(() => import("./pages/ServicesPage"));
 const ServiceRequestPage = lazy(() => import("./pages/ServiceRequestPage"));
 const TrackingPage = lazy(() => import("./pages/TrackingPage"));
 const DemoTrackingPage = lazy(() => import("./pages/DemoTrackingPage"));
+const OrdersPage = lazy(() => import("./pages/OrdersPage"));
 
 const AdminLayout = lazy(() => import("./components/admin/AdminLayout"));
-const DashboardPage = lazy(() => import("./pages/admin/DashboardPage"));
-const OrdersPage = lazy(() => import("./pages/admin/OrdersPage"));
+const AdminDashboardPage = lazy(() => import("./pages/admin/DashboardPage"));
+const AdminOrdersPage = lazy(() => import("./pages/admin/OrdersPage"));
 const MenuManagementPage = lazy(() => import("./pages/admin/MenuManagementPage"));
 const CustomersPage = lazy(() => import("./pages/admin/CustomersPage"));
 
@@ -48,7 +49,6 @@ const PushRegistrar = () => {
 
 const showAdmin = !isNativePlatform();
 
-// Separate component so localStorage is checked on every render (not once at App mount)
 const HomeRoute = () => {
   if (!localStorage.getItem("speedup_onboarded")) {
     return <Navigate to="/onboarding" replace />;
@@ -71,6 +71,7 @@ const App = () => (
                 <Route path="/onboarding" element={<OnboardingPage />} />
                 <Route path="/" element={<HomeRoute />} />
                 <Route path="/menu" element={<MenuPage />} />
+                <Route path="/orders" element={<OrdersPage />} />
                 <Route path="/auth" element={<AuthPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/checkout" element={<CheckoutPage />} />
@@ -80,8 +81,8 @@ const App = () => (
                 <Route path="/demo" element={<DemoTrackingPage />} />
                 {showAdmin && (
                   <Route path="/admin" element={<AdminLayout />}>
-                    <Route index element={<DashboardPage />} />
-                    <Route path="orders" element={<OrdersPage />} />
+                    <Route index element={<AdminDashboardPage />} />
+                    <Route path="orders" element={<AdminOrdersPage />} />
                     <Route path="menu" element={<MenuManagementPage />} />
                     <Route path="customers" element={<CustomersPage />} />
                   </Route>

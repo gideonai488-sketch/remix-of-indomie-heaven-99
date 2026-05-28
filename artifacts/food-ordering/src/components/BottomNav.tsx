@@ -1,4 +1,4 @@
-import { Home, UtensilsCrossed, ShoppingCart, User } from "lucide-react";
+import { Home, ClipboardList, ShoppingCart, User } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -29,9 +29,9 @@ const BottomNav = () => {
           Home
         </button>
 
-        <button onClick={() => navigate("/menu")} className={tab(isActive("/menu"))}>
-          <UtensilsCrossed className="h-5 w-5" />
-          Food
+        <button onClick={() => navigate("/orders")} className={tab(isActive("/orders"))}>
+          <ClipboardList className="h-5 w-5" />
+          Orders
         </button>
 
         {/* Services — centre pill */}
