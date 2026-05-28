@@ -1,4 +1,4 @@
-import { Home, UtensilsCrossed, ShoppingCart, User, Zap } from "lucide-react";
+import { Home, UtensilsCrossed, ShoppingCart, User } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -39,10 +39,10 @@ const BottomNav = () => {
           onClick={() => navigate("/services")}
           className="flex flex-1 flex-col items-center gap-0.5 text-[10px] font-semibold transition-colors"
         >
-          <div className={`relative flex h-9 w-9 items-center justify-center rounded-full mb-[-2px] transition-colors ${
-            servicesActive ? "bg-primary shadow-warm" : "bg-primary/10"
+          <div className={`relative flex h-9 w-9 items-center justify-center rounded-full mb-[-2px] transition-colors overflow-hidden ${
+            servicesActive ? "bg-primary shadow-warm ring-2 ring-primary/30" : "bg-primary/10"
           }`}>
-            <Zap className={`h-4 w-4 ${servicesActive ? "text-white fill-white" : "text-primary"}`} />
+            <img src="/owl-icon.png" alt="" className="h-6 w-6 object-cover" />
           </div>
           <span className={servicesActive ? "text-primary" : "text-muted-foreground"}>
             Services

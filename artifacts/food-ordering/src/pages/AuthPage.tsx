@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Eye, EyeOff, ArrowLeft, Lock, Phone, User, Mail, Zap, CheckCircle2,
+  Eye, EyeOff, ArrowLeft, Lock, Phone, User, Mail, CheckCircle2,
 } from "lucide-react";
 
 const InputField = ({
@@ -114,9 +114,7 @@ const AuthPage = () => {
           </button>
 
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-lg">
-              <Zap className="h-6 w-6 fill-primary text-primary" />
-            </div>
+            <img src="/owl-icon.png" alt="SpeedUp" className="h-12 w-12 rounded-2xl object-cover shadow-lg" />
             <div>
               <h1 className="font-display text-2xl font-black text-white">
                 SpeedUp

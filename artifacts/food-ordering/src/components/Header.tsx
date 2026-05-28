@@ -1,6 +1,5 @@
 import { useNavigate } from "react-router-dom";
 import NotificationBell from "@/components/NotificationBell";
-import { Zap } from "lucide-react";
 
 const Header = () => {
   const navigate = useNavigate();
@@ -18,9 +17,7 @@ const Header = () => {
 
       <div className="container mx-auto flex h-12 items-center justify-between px-4 md:h-14">
         <button onClick={() => navigate("/")} className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary md:h-9 md:w-9">
-            <Zap className="h-5 w-5 fill-current text-white" />
-          </div>
+          <img src="/owl-icon.png" alt="SpeedUp" className="h-8 w-8 rounded-xl object-cover md:h-9 md:w-9" />
           <h1 className="font-display text-lg font-bold md:text-xl">
             <span className="text-foreground">Speed</span><span className="text-primary">Up</span>
           </h1>
