@@ -824,27 +824,41 @@ const TrackingPage = () => {
             onClick={async () => {
               if (!window.confirm("Cancel this order?")) return;
               try {
-                const { error: dbErr } = await (supabase as any)
+                const { error: dbErr, status: httpStatus } = await (supabase as any)
                   .from("orders")
                   .update({ status: "cancelled" })
                   .eq("id", id);
 
-                if (dbErr) throw new Error(dbErr.message);
+                console.error("[cancel]", { dbErr, httpStatus });
 
-                // Verify the update actually took effect
-                const { data: check } = await (supabase as any)
+                if (dbErr) {
+                  toast.error(`DB error (${httpStatus}): ${dbErr.message} [${dbErr.code}]`);
+                  return;
+                }
+
+                // Verify the update took effect
+                const { data: check, error: selErr } = await (supabase as any)
                   .from("orders")
                   .select("status")
                   .eq("id", id)
                   .single();
 
+                console.error("[cancel check]", { check, selErr });
+
+                if (selErr) {
+                  toast.error(`Check error: ${selErr.message}`);
+                  return;
+                }
+
                 if (check?.status !== "cancelled") {
-                  throw new Error("Could not cancel — order may have already been assigned to a rider.");
+                  toast.error(`Update blocked — current status is still "${check?.status}". Check Supabase RLS on orders table.`);
+                  return;
                 }
 
                 toast.success("Order cancelled.");
                 navigate("/", { replace: true });
               } catch (e: any) {
+                console.error("[cancel exception]", e);
                 toast.error(e?.message || "Could not cancel — please try again.");
               }
             }}
