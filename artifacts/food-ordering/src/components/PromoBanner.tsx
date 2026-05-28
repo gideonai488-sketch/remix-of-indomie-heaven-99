@@ -26,29 +26,71 @@ const PromoBanner = () => {
   const [current, setCurrent] = useState(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  // Fetch from promo_banners table on mount
+  // Fetch from promo_banners table on mount, fallback to storage direct
   useEffect(() => {
     const load = async () => {
       try {
-        const { data: rows, error } = await supabase
+        // 1. Try database table first
+        const { data: rows, error: dbError } = await supabase
           .from("promo_banners")
           .select("title, subtitle, cta, file_path, bucket")
           .eq("is_active", true)
           .order("sort_order", { ascending: true });
 
-        if (error || !rows || rows.length === 0) {
-          console.warn("[PromoBanner] db load failed, using fallback", error?.message);
+        if (!dbError && rows && rows.length > 0) {
+          const mapped: BannerSlide[] = (rows as any[]).map((r) => {
+            const { data } = supabase.storage.from(r.bucket || "promo-videos").getPublicUrl(r.file_path);
+            return {
+              src: data.publicUrl,
+              title: r.title || "",
+              subtitle: r.subtitle || "",
+              cta: r.cta || "",
+            };
+          });
+          setSlides(mapped);
+          return;
+        }
+
+        // 2. Table missing or empty — load directly from Storage
+        console.warn("[PromoBanner] db empty/failed, loading from storage:", dbError?.message);
+        const bucketName = "promo-videos";
+        const { data: files, error: stError } = await supabase.storage.from(bucketName).list("", { limit: 20 });
+        if (stError) {
+          console.warn("[PromoBanner] storage error:", stError.message);
           setSlides(fallbackVideos);
           return;
         }
 
-        const mapped: BannerSlide[] = (rows as any[]).map((r) => {
-          const { data } = supabase.storage.from(r.bucket || "promo-videos").getPublicUrl(r.file_path);
+        let allMedia: { name: string; path: string }[] = [];
+        const rootFiles = (files || []).filter((f) => {
+          const name = f.name.toLowerCase();
+          return !name.startsWith(".") && (name.endsWith(".mp4") || name.endsWith(".webm") || name.endsWith(".mov") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg"));
+        });
+        allMedia.push(...rootFiles.map((f) => ({ name: f.name, path: f.name })));
+
+        const folders = (files || []).filter((f) => f.id === null && !f.name.startsWith("."));
+        for (const folder of folders) {
+          const { data: subFiles } = await supabase.storage.from(bucketName).list(folder.name, { limit: 20 });
+          const subMedia = (subFiles || []).filter((f) => {
+            const name = f.name.toLowerCase();
+            return name.endsWith(".mp4") || name.endsWith(".webm") || name.endsWith(".mov") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg");
+          });
+          allMedia.push(...subMedia.map((f) => ({ name: f.name, path: `${folder.name}/${f.name}` })));
+        }
+
+        if (allMedia.length === 0) {
+          console.warn("[PromoBanner] bucket empty, using fallback");
+          setSlides(fallbackVideos);
+          return;
+        }
+
+        const mapped: BannerSlide[] = allMedia.map((m) => {
+          const { data } = supabase.storage.from(bucketName).getPublicUrl(m.path);
           return {
             src: data.publicUrl,
-            title: r.title || "",
-            subtitle: r.subtitle || "",
-            cta: r.cta || "",
+            title: "",
+            subtitle: "",
+            cta: "",
           };
         });
         setSlides(mapped);
