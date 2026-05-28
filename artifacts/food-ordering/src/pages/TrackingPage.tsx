@@ -213,8 +213,13 @@ const MapView = ({
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
 
+    // Force canvas to match container size whenever layout shifts
+    const ro = new ResizeObserver(() => { map.resize(); });
+    ro.observe(containerRef.current);
+
     map.on("load", async () => {
       clearTimeout(loadTimeout);
+      map.resize();
       setMapReady(true);
       // Pickup: geocode address
       let pickup = (await geocode(pickupAddress)) ?? [ACCRA[0] - 0.02, ACCRA[1] - 0.01] as [number, number];
@@ -282,6 +287,7 @@ const MapView = ({
 
     return () => {
       clearTimeout(loadTimeout);
+      ro.disconnect();
       cancelAnimationFrame(animFrameRef.current);
       map.remove();
       mapRef.current = null;
