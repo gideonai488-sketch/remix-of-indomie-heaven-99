@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string;
+mapboxgl.accessToken = "pk.eyJ1IjoidHJhdmVsbWF0ZTExMjMiLCJhIjoiY21oc2hmM3g5MGo0ajJzcjg1cHgzYjFtYSJ9.5WCLBT_KSghCcRtzH3xreQ";
 
 type OrderStatus = "pending" | "confirmed" | "preparing" | "delivering" | "delivered" | "cancelled";
 
@@ -108,7 +108,8 @@ const FareMeter = ({ running, finalAmount }: { running: boolean; finalAmount: nu
 
 // -------- Mapbox Live Tracking Map --------
 const ACCRA: [number, number] = [-0.1870, 5.6037];
-const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
+// Public pk.* token — safe to hardcode in frontend code
+const TOKEN = "pk.eyJ1IjoidHJhdmVsbWF0ZTExMjMiLCJhIjoiY21oc2hmM3g5MGo0ajJzcjg1cHgzYjFtYSJ9.5WCLBT_KSghCcRtzH3xreQ";
 
 async function geocode(query: string): Promise<[number, number] | null> {
   try {
@@ -167,6 +168,7 @@ const MapView = ({
   const routeCoordsRef = useRef<[number, number][]>([]);
   const animFrameRef = useRef<number>(0);
   const progressRef = useRef(0);
+  const [mapFailed, setMapFailed] = useState(false);
 
   // Build map + geocode + route once
   useEffect(() => {
@@ -182,8 +184,10 @@ const MapView = ({
         attributionControl: false,
       });
     } catch {
-      return; // WebGL not available — silently skip map
+      setMapFailed(true);
+      return;
     }
+    map.on("error", () => setMapFailed(true));
     mapRef.current = map;
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
@@ -289,13 +293,30 @@ const MapView = ({
 
   return (
     <div className="relative w-full overflow-hidden rounded-3xl shadow-lg" style={{ height: 260 }}>
-      <div ref={containerRef} className="absolute inset-0"/>
+      {/* Map canvas — hidden (not removed) when failed so ref stays valid */}
+      <div ref={containerRef} className="absolute inset-0" style={{ opacity: mapFailed ? 0 : 1 }}/>
+
+      {/* Fallback when map can't load */}
+      {mapFailed && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2"
+          style={{ background: "linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%)" }}>
+          <div className="text-5xl mb-1">🗺️</div>
+          <p className="text-white font-bold text-sm">Live map loading…</p>
+          <p className="text-white/50 text-xs text-center px-8">Rider is being tracked</p>
+          {isActive && (
+            <div className="mt-2 flex items-center gap-2 rounded-full bg-primary/80 px-4 py-2 text-xs font-semibold text-white">
+              <span className="animate-bounce">🏍️</span> Rider en route
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Status pill overlay */}
       <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-none">
         <div className="flex items-center gap-1.5 rounded-full bg-white/90 backdrop-blur-sm px-3 py-1.5 shadow text-xs font-semibold text-green-700">
           <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"/> Pickup
         </div>
-        {isActive && (
+        {isActive && !mapFailed && (
           <div className="flex items-center gap-1.5 rounded-full bg-primary/90 backdrop-blur-sm px-3 py-1.5 shadow text-xs font-semibold text-white">
             🏍️ Rider en route
           </div>

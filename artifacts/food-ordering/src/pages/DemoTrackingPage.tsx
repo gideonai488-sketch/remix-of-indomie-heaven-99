@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string;
+// Public pk.* token — safe to hardcode in frontend code
+const MAPBOX_TOKEN = "pk.eyJ1IjoidHJhdmVsbWF0ZTExMjMiLCJhIjoiY21oc2hmM3g5MGo0ajJzcjg1cHgzYjFtYSJ9.5WCLBT_KSghCcRtzH3xreQ";
+mapboxgl.accessToken = MAPBOX_TOKEN;
 
 type OrderStatus = "pending" | "confirmed" | "preparing" | "delivering" | "delivered";
 
 const ACCRA: [number, number] = [-0.1870, 5.6037];
-const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
+const TOKEN = MAPBOX_TOKEN;
 
 const PICKUP_ADDR   = "Accra Mall, Spintex Road, Accra";
 const DELIVERY_ADDR = "University of Ghana, Legon, Accra";
