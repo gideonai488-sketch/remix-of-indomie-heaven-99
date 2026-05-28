@@ -96,6 +96,7 @@ const DemoTrackingPage = () => {
   const [toast, setToast] = useState("");
   const [showToast, setShowToast] = useState(false);
   const [webGLError, setWebGLError] = useState(false);
+  const [userCoords, setUserCoords] = useState<[number, number] | null>(null);
 
   const status = STATUS_SEQUENCE[statusIdx];
 
@@ -105,6 +106,7 @@ const DemoTrackingPage = () => {
   const routeCoordsRef= useRef<[number, number][]>([]);
   const animFrameRef  = useRef<number>(0);
   const progressRef   = useRef(0);
+  const gpsUsedRef    = useRef(false);
 
   const showMsg = (msg: string) => {
     if (!msg) return;
@@ -112,6 +114,16 @@ const DemoTrackingPage = () => {
     setShowToast(true);
     setTimeout(() => setShowToast(false), 3000);
   };
+
+  // Request user's GPS location for accurate demo routing
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setUserCoords([pos.coords.longitude, pos.coords.latitude]),
+      () => { /* permission denied — use hardcoded Accra delivery address */ },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, []);
 
   // Auto-advance status
   useEffect(() => {
@@ -154,16 +166,25 @@ const DemoTrackingPage = () => {
     return () => cancelAnimationFrame(animFrameRef.current);
   }, [animateRider]);
 
-  // Build map once
+  // Build map — rebuilds once when GPS coords arrive
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
+    if (!containerRef.current) return;
+
+    // GPS just arrived and map was built without it — tear down to rebuild
+    if (userCoords && !gpsUsedRef.current && mapRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      mapRef.current.remove();
+      mapRef.current = null;
+    }
+    if (mapRef.current) return;
+    if (userCoords) gpsUsedRef.current = true;
 
     let map: mapboxgl.Map;
     try {
       map = new mapboxgl.Map({
         container: containerRef.current,
         style: "mapbox://styles/mapbox/streets-v12",
-        center: ACCRA,
+        center: userCoords ?? ACCRA,
         zoom: 13,
         attributionControl: false,
       });
@@ -175,9 +196,13 @@ const DemoTrackingPage = () => {
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
 
     map.on("load", async () => {
-      let pickup   = (await geocode(PICKUP_ADDR))   ?? [-0.207, 5.595] as [number, number];
-      let delivery = (await geocode(DELIVERY_ADDR)) ?? [-0.187, 5.650] as [number, number];
-      if (!isFinite(pickup[0]))   pickup   = [-0.207, 5.595];
+      let pickup = (await geocode(PICKUP_ADDR)) ?? [-0.207, 5.595] as [number, number];
+      if (!isFinite(pickup[0])) pickup = [-0.207, 5.595];
+
+      // Delivery: real GPS if allowed, else geocode the demo address
+      let delivery: [number, number] = userCoords
+        ?? (await geocode(DELIVERY_ADDR))
+        ?? [-0.187, 5.650] as [number, number];
       if (!isFinite(delivery[0])) delivery = [-0.187, 5.650];
 
       const route = await getRoute(pickup, delivery);
@@ -206,10 +231,16 @@ const DemoTrackingPage = () => {
         .addTo(map);
 
       const dEl = document.createElement("div");
-      dEl.innerHTML = `<div style="background:#ef4444;width:42px;height:42px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 3px 12px rgba(0,0,0,0.35)"><div style="transform:rotate(45deg);display:flex;align-items:center;justify-content:center;height:100%;font-size:16px">🏠</div></div>`;
-      new mapboxgl.Marker({ element: dEl, anchor: "bottom" })
+      dEl.innerHTML = userCoords
+        ? `<div style="position:relative"><div style="background:#ef4444;width:22px;height:22px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div><div style="position:absolute;inset:-7px;border-radius:50%;border:2px solid #ef4444;animation:ping 1.2s ease-out infinite;opacity:0.6"></div></div>`
+        : `<div style="background:#ef4444;width:42px;height:42px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 3px 12px rgba(0,0,0,0.35)"><div style="transform:rotate(45deg);display:flex;align-items:center;justify-content:center;height:100%;font-size:16px">🏠</div></div>`;
+      new mapboxgl.Marker({ element: dEl, anchor: userCoords ? "center" : "bottom" })
         .setLngLat(delivery)
-        .setPopup(new mapboxgl.Popup({ offset: 30 }).setHTML(`<strong>Your location</strong><br/><span style='font-size:11px'>${DELIVERY_ADDR}</span>`))
+        .setPopup(new mapboxgl.Popup({ offset: 30 }).setHTML(
+          userCoords
+            ? `<strong>📍 Your live location</strong>`
+            : `<strong>Your location</strong><br/><span style='font-size:11px'>${DELIVERY_ADDR}</span>`
+        ))
         .addTo(map);
 
       const rEl = document.createElement("div");
@@ -232,7 +263,8 @@ const DemoTrackingPage = () => {
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userCoords]);
 
   const curStep = STEP_IDX[status];
 

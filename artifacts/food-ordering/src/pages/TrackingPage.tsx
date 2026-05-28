@@ -156,11 +156,12 @@ const STATUS_PROGRESS: Record<OrderStatus, number> = {
 };
 
 const MapView = ({
-  status, pickupAddress, deliveryAddress,
+  status, pickupAddress, deliveryAddress, userCoords,
 }: {
   status: OrderStatus;
   pickupAddress: string;
   deliveryAddress: string;
+  userCoords: [number, number] | null;
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -169,17 +170,29 @@ const MapView = ({
   const animFrameRef = useRef<number>(0);
   const progressRef = useRef(0);
   const [mapFailed, setMapFailed] = useState(false);
+  const gpsUsedRef = useRef(false);
 
-  // Build map + geocode + route once
+  // Build map — rebuilds once when GPS coords arrive
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
+    if (!containerRef.current) return;
+
+    // GPS just arrived and map was built without it — tear down to rebuild
+    if (userCoords && !gpsUsedRef.current && mapRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      mapRef.current.remove();
+      mapRef.current = null;
+    }
+    if (mapRef.current) return;
+    if (userCoords) gpsUsedRef.current = true;
+
+    const initialCenter = userCoords ?? ACCRA;
 
     let map: mapboxgl.Map;
     try {
       map = new mapboxgl.Map({
         container: containerRef.current,
         style: "mapbox://styles/mapbox/streets-v12",
-        center: ACCRA,
+        center: initialCenter,
         zoom: 13,
         attributionControl: false,
       });
@@ -193,12 +206,14 @@ const MapView = ({
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
 
     map.on("load", async () => {
-      // Geocode addresses (fallback to Accra offsets)
+      // Pickup: geocode address
       let pickup = (await geocode(pickupAddress)) ?? [ACCRA[0] - 0.02, ACCRA[1] - 0.01] as [number, number];
-      let delivery = (await geocode(deliveryAddress)) ?? [ACCRA[0] + 0.025, ACCRA[1] + 0.018] as [number, number];
-
-      // Guard against NaN — hard fallback to known Accra coords
       if (!isFinite(pickup[0]) || !isFinite(pickup[1])) pickup = [ACCRA[0] - 0.02, ACCRA[1] - 0.01];
+
+      // Delivery: use real GPS if available, otherwise geocode the typed address
+      let delivery: [number, number] = userCoords
+        ?? (await geocode(deliveryAddress))
+        ?? [ACCRA[0] + 0.025, ACCRA[1] + 0.018] as [number, number];
       if (!isFinite(delivery[0]) || !isFinite(delivery[1])) delivery = [ACCRA[0] + 0.025, ACCRA[1] + 0.018];
 
       const route = await getRoute(pickup, delivery);
@@ -225,12 +240,14 @@ const MapView = ({
         .setPopup(new mapboxgl.Popup({ offset: 25 }).setText("Pickup"))
         .addTo(map);
 
-      // Delivery marker (red)
+      // Delivery marker (red) — pulse ring when GPS is active
       const deliveryEl = document.createElement("div");
-      deliveryEl.innerHTML = `<div style="background:#ef4444;width:36px;height:36px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)"><div style="transform:rotate(45deg);display:flex;align-items:center;justify-content:center;height:100%;font-size:14px">🏠</div></div>`;
-      new mapboxgl.Marker({ element: deliveryEl, anchor: "bottom" })
+      deliveryEl.innerHTML = userCoords
+        ? `<div style="position:relative"><div style="background:#ef4444;width:20px;height:20px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div><div style="position:absolute;inset:-6px;border-radius:50%;border:2px solid #ef4444;animation:ping 1.2s ease-out infinite;opacity:0.6"></div></div>`
+        : `<div style="background:#ef4444;width:36px;height:36px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)"><div style="transform:rotate(45deg);display:flex;align-items:center;justify-content:center;height:100%;font-size:14px">🏠</div></div>`;
+      new mapboxgl.Marker({ element: deliveryEl, anchor: userCoords ? "center" : "bottom" })
         .setLngLat(delivery)
-        .setPopup(new mapboxgl.Popup({ offset: 25 }).setText("Your location"))
+        .setPopup(new mapboxgl.Popup({ offset: 25 }).setText(userCoords ? "📍 Your live location" : "Your location"))
         .addTo(map);
 
       // Rider marker
@@ -259,7 +276,7 @@ const MapView = ({
       mapRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [userCoords]);
 
   // Animate rider toward target progress
   const animateRider = useCallback(() => {
@@ -311,6 +328,14 @@ const MapView = ({
         </div>
       )}
 
+      {/* GPS active badge */}
+      {userCoords && !mapFailed && (
+        <div className="absolute top-3 left-3 flex items-center gap-1.5 rounded-full bg-black/60 backdrop-blur-sm px-2.5 py-1 pointer-events-none">
+          <div className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse"/>
+          <span className="text-[10px] font-semibold text-white">Live location</span>
+        </div>
+      )}
+
       {/* Status pill overlay */}
       <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-none">
         <div className="flex items-center gap-1.5 rounded-full bg-white/90 backdrop-blur-sm px-3 py-1.5 shadow text-xs font-semibold text-green-700">
@@ -322,7 +347,7 @@ const MapView = ({
           </div>
         )}
         <div className="flex items-center gap-1.5 rounded-full bg-white/90 backdrop-blur-sm px-3 py-1.5 shadow text-xs font-semibold text-red-600">
-          <div className="h-2 w-2 rounded-full bg-red-500"/> You
+          <div className="h-2 w-2 rounded-full bg-red-500"/> {userCoords ? "📍 You" : "You"}
         </div>
       </div>
     </div>
@@ -521,6 +546,17 @@ const TrackingPage = () => {
   const [loading, setLoading] = useState(true);
   const [showPayment, setShowPayment] = useState(false);
   const [meterRunning, setMeterRunning] = useState(false);
+  const [userCoords, setUserCoords] = useState<[number, number] | null>(null);
+
+  // Request user's GPS location for accurate map routing
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setUserCoords([pos.coords.longitude, pos.coords.latitude]),
+      () => { /* permission denied — fall back to address geocoding */ },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -606,7 +642,7 @@ const TrackingPage = () => {
 
       <div className="container mx-auto max-w-lg flex-1 space-y-4 px-4 py-5 pb-8">
 
-        <MapView status={order.status} pickupAddress={pickupAddr} deliveryAddress={deliveryAddr}/>
+        <MapView status={order.status} pickupAddress={pickupAddr} deliveryAddress={deliveryAddr} userCoords={userCoords}/>
 
         {/* ETA bar */}
         <div className="flex items-center gap-4 rounded-2xl border border-border bg-card p-4 shadow-card">
