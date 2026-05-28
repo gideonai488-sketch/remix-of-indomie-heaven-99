@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/falcon-icon.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Highest Bowls — Slurp to the Top</title>
+    <meta name="description" content="Premium noodle bowls for every mood. After Lectures, Oh Chale, Pick My Calls &amp; more. Slurp to the top.">
+    <meta name="author" content="Highest Bowls" />
+    <meta name="theme-color" content="#E8590C" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Highest Bowls" />
+
+    
+    
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/a5f97d5d-f0f5-4e6e-8a25-44cccceddda4/id-preview-9d0b9538--59516336-f656-429e-a19a-36147241e533.lovable.app-1772087407254.png">
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@HighestBowls" />
+    <meta name="twitter:image" content="https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/a5f97d5d-f0f5-4e6e-8a25-44cccceddda4/id-preview-9d0b9538--59516336-f656-429e-a19a-36147241e533.lovable.app-1772087407254.png">
+
+    <link rel="canonical" href="https://highestbowls.com" />
+
+    <style>
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, hsl(0, 70%, 10%) 0%, hsl(0, 60%, 22%) 100%);
+        transition: opacity 0.4s ease-out;
+      }
+      #splash.hide {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash .logo {
+        font-size: 4rem;
+        animation: pulse-bowl 1.5s ease-in-out infinite;
+      }
+      #splash .title {
+        margin-top: 1rem;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 1.5rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        background: linear-gradient(135deg, hsl(0, 78%, 50%), hsl(38, 90%, 50%));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      #splash .subtitle {
+        margin-top: 0.5rem;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 0.875rem;
+        color: rgba(255,255,255,0.5);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+      #splash .loader {
+        margin-top: 2rem;
+        width: 40px;
+        height: 40px;
+        border: 3px solid hsla(0, 78%, 50%, 0.2);
+        border-top-color: hsl(0, 78%, 50%);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      @keyframes pulse-bowl {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+      }
+    </style>
+    <meta property="og:title" content="Highest Bowls — Slurp to the Top">
+  <meta name="twitter:title" content="Highest Bowls — Slurp to the Top">
+  <meta property="og:description" content="Premium noodle bowls for every mood. After Lectures, Oh Chale, Pick My Calls &amp; more. Slurp to the top.">
+  <meta name="twitter:description" content="Premium noodle bowls for every mood. After Lectures, Oh Chale, Pick My Calls &amp; more. Slurp to the top.">
+</head>
+
+  <body>
+    <div id="splash">
+      <img src="/falcon-icon.png" alt="" class="logo" style="width:64px;height:64px;border-radius:12px;">
+      <div class="title">Highest Bowls</div>
+      <div class="subtitle">Slurp to the Top</div>
+      <div class="loader"></div>
+    </div>
+
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

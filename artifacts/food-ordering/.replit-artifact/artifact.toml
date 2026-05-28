@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Food Ordering App"
+version = "1.0.0"
+id = "artifacts/food-ordering"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20090
+
+[services.development]
+run = "pnpm --filter @workspace/food-ordering run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/food-ordering", "run", "build" ]
+publicDir = "artifacts/food-ordering/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20090"
+BASE_PATH = "/"
