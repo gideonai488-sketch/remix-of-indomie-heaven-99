@@ -98,10 +98,14 @@ const PromoBanner = () => {
     return () => clearInterval(t);
   }, [slides.length]);
 
+
   // Sync muted state across all video refs
   useEffect(() => {
     videoRefs.current.forEach((v) => {
-      if (v) v.muted = muted;
+      if (v) {
+        v.muted = muted;
+        v.volume = muted ? 0 : 1;
+      }
     });
   }, [muted]);
 
@@ -124,12 +128,19 @@ const PromoBanner = () => {
             >
               {s.src.match(/\.(mp4|webm|mov)(\?.*)?$/i) ? (
                 <video
-                  ref={(el) => { videoRefs.current[i] = el; }}
+                  key={`slide-${i}-${muted ? "muted" : "unmuted"}`}
+                  ref={(el) => {
+                    videoRefs.current[i] = el;
+                    if (el && !muted) {
+                      el.play().catch(() => {});
+                    }
+                  }}
                   src={s.src}
                   className="h-full w-full object-cover"
                   autoPlay
                   loop
                   playsInline
+                  muted={muted}
                 />
               ) : (
                 <img src={s.src} alt={s.label} className="h-full w-full object-cover" />
@@ -176,14 +187,33 @@ const PromoBanner = () => {
           {/* Mute toggle (only for video slides) */}
           {slides[current]?.src.match(/\.(mp4|webm|mov)(\?.*)?$/i) && (
             <button
-              onClick={(e) => { e.stopPropagation(); setMuted((m) => !m); }}
-              className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm transition-all hover:bg-white/30"
-              aria-label={muted ? "Unmute video" : "Mute video"}
+              onClick={(e) => {
+                e.stopPropagation();
+                const nextMuted = !muted;
+                const v = videoRefs.current[current];
+                if (v) {
+                  v.muted = nextMuted;
+                  v.volume = nextMuted ? 0 : 1;
+                  if (!nextMuted) {
+                    v.play().catch(() => {});
+                  }
+                }
+                setMuted(nextMuted);
+                console.log("[PromoBanner] sound toggled, muted:", nextMuted);
+              }}
+              className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm ring-1 ring-white/20 transition-all hover:bg-black/70 hover:scale-105"
+              aria-label={muted ? "Tap for sound" : "Mute video"}
             >
               {muted ? (
-                <VolumeOff className="h-3 w-3 text-white" />
+                <>
+                  <VolumeOff className="h-4 w-4 text-white" />
+                  <span className="text-[10px] font-bold text-white">Sound</span>
+                </>
               ) : (
-                <Volume2 className="h-3 w-3 text-white" />
+                <>
+                  <Volume2 className="h-4 w-4 text-white" />
+                  <span className="text-[10px] font-bold text-white">Mute</span>
+                </>
               )}
             </button>
           )}
