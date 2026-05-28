@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Zap, Volume2, VolumeOff } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 // Fallback videos baked into the app (used when Supabase storage is empty / unreachable)
@@ -9,9 +9,9 @@ import promoVideo2 from "@/assets/promo-video-2.mp4";
 import promoVideo3 from "@/assets/promo-video-3.mp4";
 
 const fallbackVideos = [
-  { src: promoVideo1, label: "The Ultimate Combo!", subtitle: "Bowl + Fries + Drink \u2014 everything you need.", cta: "Order Now" },
-  { src: promoVideo2, label: "Fresh & Loaded", subtitle: "Made fresh, served bold. Your next favourite bowl.", cta: "See Menu" },
-  { src: promoVideo3, label: "Oh Chale! Specials", subtitle: "Limited-time flavours you don't want to miss.", cta: "Grab It" },
+  { src: promoVideo1, label: "", subtitle: "", cta: "" },
+  { src: promoVideo2, label: "", subtitle: "", cta: "" },
+  { src: promoVideo3, label: "", subtitle: "", cta: "" },
 ];
 
 interface BannerSlide {
@@ -25,10 +25,9 @@ const PromoBanner = () => {
   const navigate = useNavigate();
   const [slides, setSlides] = useState<BannerSlide[]>([]);
   const [current, setCurrent] = useState(0);
-  const [muted, setMuted] = useState(true);
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
 
-  // Fetch from Supabase Storage bucket "promo videos" on mount
+  // Fetch from Supabase Storage bucket on mount
   useEffect(() => {
     const load = async () => {
       try {
@@ -40,17 +39,13 @@ const PromoBanner = () => {
           return;
         }
 
-        // Gather all media files (root + any subfolders)
         let allMedia: { name: string; path: string }[] = [];
-
-        // Check root files
         const rootFiles = (files || []).filter((f) => {
           const name = f.name.toLowerCase();
           return !name.startsWith(".") && (name.endsWith(".mp4") || name.endsWith(".webm") || name.endsWith(".mov") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg"));
         });
         allMedia.push(...rootFiles.map((f) => ({ name: f.name, path: f.name })));
 
-        // Check subfolders (folders show as "folders" in the list response)
         const folders = (files || []).filter((f) => f.id === null && !f.name.startsWith("."));
         for (const folder of folders) {
           const { data: subFiles } = await supabase.storage.from(bucketName).list(folder.name, { limit: 20 });
@@ -62,25 +57,20 @@ const PromoBanner = () => {
         }
 
         if (allMedia.length === 0) {
-          console.warn(`[PromoBanner] bucket '${bucketName}' is empty or private. To fix: Supabase Dashboard -> Storage -> Buckets -> '${bucketName}' -> Configuration -> Set to Public, or add RLS policy for anon SELECT.`);
+          console.warn(`[PromoBanner] bucket '${bucketName}' is empty or private.`);
           setSlides(fallbackVideos);
           return;
         }
 
-        console.log("[PromoBanner] media files found:", allMedia.length, allMedia.map((m) => m.path));
-
         const mapped: BannerSlide[] = allMedia.map((m) => {
           const { data } = supabase.storage.from(bucketName).getPublicUrl(m.path);
-          const base = m.name.split(".")[0].replace(/[_-]/g, " ");
-          const label = base.replace(/\b\w/g, (c) => c.toUpperCase());
           return {
             src: data.publicUrl,
-            label: label || "Special Offer",
+            label: "",
             subtitle: "",
-            cta: "Order Now",
+            cta: "",
           };
         });
-        console.log("[PromoBanner] loaded slides:", mapped.map((s) => s.src));
         setSlides(mapped);
       } catch (err: any) {
         console.error("[PromoBanner] unexpected error:", err?.message || err);
@@ -92,22 +82,24 @@ const PromoBanner = () => {
 
   const go = (dir: number) => setCurrent((p) => (p + dir + slides.length) % Math.max(slides.length, 1));
 
+  // Auto-rotate every 5.5s
   useEffect(() => {
     if (slides.length === 0) return;
     const t = setInterval(() => setCurrent((p) => (p + 1) % slides.length), 5500);
     return () => clearInterval(t);
   }, [slides.length]);
 
-
-  // Sync muted state across all video refs
+  // Only play the current video; pause all others
   useEffect(() => {
-    videoRefs.current.forEach((v) => {
-      if (v) {
-        v.muted = muted;
-        v.volume = muted ? 0 : 1;
+    videoRefs.current.forEach((v, i) => {
+      if (!v) return;
+      if (i === current) {
+        v.play().catch(() => {});
+      } else {
+        v.pause();
       }
     });
-  }, [muted]);
+  }, [current, slides.length]);
 
   if (slides.length === 0) return null;
 
@@ -117,55 +109,27 @@ const PromoBanner = () => {
         className="group relative cursor-pointer overflow-hidden rounded-3xl shadow-md ring-1 ring-black/10"
         onClick={() => navigate("/menu")}
       >
-        {/* Media layer */}
+        {/* Media layer — only render the current slide */}
         <div className="relative h-52 w-full sm:h-64 md:h-72">
           {slides.map((s, i) => (
-            <div
-              key={i}
-              className={`absolute inset-0 h-full w-full transition-opacity duration-700 ${
-                i === current ? "opacity-100" : "opacity-0 pointer-events-none"
-              }`}
-            >
-              {s.src.match(/\.(mp4|webm|mov)(\?.*)?$/i) ? (
-                <video
-                  key={`slide-${i}-${muted ? "muted" : "unmuted"}`}
-                  ref={(el) => {
-                    videoRefs.current[i] = el;
-                    if (el && !muted) {
-                      el.play().catch(() => {});
-                    }
-                  }}
-                  src={s.src}
-                  className="h-full w-full object-cover"
-                  autoPlay
-                  loop
-                  playsInline
-                  muted={muted}
-                />
-              ) : (
-                <img src={s.src} alt={s.label} className="h-full w-full object-cover" />
-              )}
-            </div>
+            i === current && (
+              <div key={i} className="absolute inset-0 h-full w-full">
+                {s.src.match(/\.(mp4|webm|mov)(\?.*)?$/i) ? (
+                  <video
+                    ref={(el) => { videoRefs.current[i] = el; }}
+                    src={s.src}
+                    className="h-full w-full object-cover"
+                    autoPlay
+                    loop
+                    playsInline
+                    muted={false}
+                  />
+                ) : (
+                  <img src={s.src} alt="" className="h-full w-full object-cover" />
+                )}
+              </div>
+            )
           ))}
-          {/* Gradient overlay */}
-          <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-transparent" />
-        </div>
-
-        {/* Content */}
-        <div className="absolute inset-0 flex flex-col justify-center px-6 sm:px-8">
-          <div className="mb-2 inline-flex w-fit items-center gap-1.5 rounded-full bg-primary px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-white">
-            <Zap className="h-3 w-3 fill-white" /> SpeedUp
-          </div>
-          <h2 className="font-display text-2xl font-black leading-tight text-white sm:text-3xl">
-            {slides[current].label.split(" ").slice(0, -1).join(" ")}{" "}
-            <span className="text-primary">{slides[current].label.split(" ").slice(-1)}</span>
-          </h2>
-          {slides[current].subtitle && (
-            <p className="mt-1.5 max-w-xs text-sm text-white/70">{slides[current].subtitle}</p>
-          )}
-          <button className="mt-4 w-fit rounded-2xl bg-primary px-6 py-2.5 text-sm font-bold text-white shadow-warm transition-transform hover:scale-105 active:scale-95">
-            {slides[current].cta} →
-          </button>
         </div>
 
         {/* Arrows */}
@@ -182,52 +146,17 @@ const PromoBanner = () => {
           <ChevronRight className="h-4 w-4 text-white" />
         </button>
 
-        {/* Mute toggle + Dots */}
-        <div className="absolute bottom-4 right-5 flex items-center gap-2">
-          {/* Mute toggle (only for video slides) */}
-          {slides[current]?.src.match(/\.(mp4|webm|mov)(\?.*)?$/i) && (
+        {/* Dots */}
+        <div className="absolute bottom-4 right-5 flex gap-1.5">
+          {slides.map((_, i) => (
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                const nextMuted = !muted;
-                const v = videoRefs.current[current];
-                if (v) {
-                  v.muted = nextMuted;
-                  v.volume = nextMuted ? 0 : 1;
-                  if (!nextMuted) {
-                    v.play().catch(() => {});
-                  }
-                }
-                setMuted(nextMuted);
-                console.log("[PromoBanner] sound toggled, muted:", nextMuted);
-              }}
-              className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm ring-1 ring-white/20 transition-all hover:bg-black/70 hover:scale-105"
-              aria-label={muted ? "Tap for sound" : "Mute video"}
-            >
-              {muted ? (
-                <>
-                  <VolumeOff className="h-4 w-4 text-white" />
-                  <span className="text-[10px] font-bold text-white">Sound</span>
-                </>
-              ) : (
-                <>
-                  <Volume2 className="h-4 w-4 text-white" />
-                  <span className="text-[10px] font-bold text-white">Mute</span>
-                </>
-              )}
-            </button>
-          )}
-          <div className="flex gap-1.5">
-            {slides.map((_, i) => (
-              <button
-                key={i}
-                onClick={(e) => { e.stopPropagation(); setCurrent(i); }}
-                className={`h-1.5 rounded-full transition-all ${
-                  i === current ? "w-6 bg-white" : "w-1.5 bg-white/40"
-                }`}
-              />
-            ))}
-          </div>
+              key={i}
+              onClick={(e) => { e.stopPropagation(); setCurrent(i); }}
+              className={`h-1.5 rounded-full transition-all ${
+                i === current ? "w-6 bg-white" : "w-1.5 bg-white/40"
+              }`}
+            />
+          ))}
         </div>
       </div>
     </section>
