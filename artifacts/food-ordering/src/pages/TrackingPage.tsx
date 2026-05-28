@@ -202,8 +202,15 @@ const MapView = ({
       setMapFailed(true);
       return;
     }
-    // Catch any map error (auth, network, style, WebGL, etc.)
-    map.on("error", () => { setMapFailed(true); });
+    // Only fail on critical pre-load errors (bad token, WebGL, style 401/403).
+    // Tile-level errors after load are non-fatal and must not hide the map.
+    let loaded = false;
+    map.once("load", () => { loaded = true; });
+    map.on("error", (e) => {
+      if (!loaded) setMapFailed(true);
+      // ignore tile/image errors after map has rendered
+      void e;
+    });
     mapRef.current = map;
 
     // Fallback: if map hasn't loaded within 12s, show the animated fallback
@@ -829,36 +836,14 @@ const TrackingPage = () => {
                   .update({ status: "cancelled" })
                   .eq("id", id);
 
-                console.error("[cancel]", { dbErr, httpStatus });
-
                 if (dbErr) {
-                  toast.error(`DB error (${httpStatus}): ${dbErr.message} [${dbErr.code}]`);
-                  return;
-                }
-
-                // Verify the update took effect
-                const { data: check, error: selErr } = await (supabase as any)
-                  .from("orders")
-                  .select("status")
-                  .eq("id", id)
-                  .single();
-
-                console.error("[cancel check]", { check, selErr });
-
-                if (selErr) {
-                  toast.error(`Check error: ${selErr.message}`);
-                  return;
-                }
-
-                if (check?.status !== "cancelled") {
-                  toast.error(`Update blocked — current status is still "${check?.status}". Check Supabase RLS on orders table.`);
+                  toast.error("Could not cancel — please try again.");
                   return;
                 }
 
                 toast.success("Order cancelled.");
                 navigate("/", { replace: true });
               } catch (e: any) {
-                console.error("[cancel exception]", e);
                 toast.error(e?.message || "Could not cancel — please try again.");
               }
             }}
