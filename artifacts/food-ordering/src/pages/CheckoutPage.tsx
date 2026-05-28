@@ -100,7 +100,7 @@ const CheckoutPage = () => {
         .from("orders")
         .insert({
           user_id: user.id,
-          address_id: selectedAddr || null,
+          delivery_address_id: selectedAddr || null,
           delivery_address: deliveryAddressText,
           customer_name: customerName.trim(),
           customer_phone: customerPhone.trim(),
