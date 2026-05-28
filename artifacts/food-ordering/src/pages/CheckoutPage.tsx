@@ -107,6 +107,7 @@ const CheckoutPage = () => {
         item_name: ci.item.name,
         quantity: ci.quantity,
         price: Number(ci.item.price),
+        total_price: Number(ci.item.price) * ci.quantity,
       }));
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
       const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
