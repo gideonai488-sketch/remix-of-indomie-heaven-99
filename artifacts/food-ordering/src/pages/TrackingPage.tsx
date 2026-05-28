@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -6,6 +6,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+
+mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string;
 
 type OrderStatus = "pending" | "confirmed" | "preparing" | "delivering" | "delivered" | "cancelled";
 
@@ -102,54 +106,177 @@ const FareMeter = ({ running, finalAmount }: { running: boolean; finalAmount: nu
   );
 };
 
-// -------- Animated Map --------
-const MapView = ({ status }: { status: OrderStatus }) => {
-  const [progress, setProgress] = useState(0);
+// -------- Mapbox Live Tracking Map --------
+const ACCRA: [number, number] = [-0.1870, 5.6037];
+const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
 
+async function geocode(query: string): Promise<[number, number] | null> {
+  try {
+    const q = encodeURIComponent(query + ", Ghana");
+    const res = await fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${q}.json?access_token=${TOKEN}&country=GH&limit=1&proximity=${ACCRA[0]},${ACCRA[1]}`
+    );
+    const json = await res.json();
+    const coords = json.features?.[0]?.geometry?.coordinates;
+    return coords ? [coords[0], coords[1]] : null;
+  } catch { return null; }
+}
+
+async function getRoute(from: [number, number], to: [number, number]): Promise<[number, number][]> {
+  try {
+    const res = await fetch(
+      `https://api.mapbox.com/directions/v5/mapbox/driving/${from[0]},${from[1]};${to[0]},${to[1]}?geometries=geojson&overview=full&access_token=${TOKEN}`
+    );
+    const json = await res.json();
+    return json.routes?.[0]?.geometry?.coordinates ?? [from, to];
+  } catch { return [from, to]; }
+}
+
+function interpolate(coords: [number, number][], t: number): [number, number] {
+  if (coords.length < 2) return coords[0] ?? ACCRA;
+  const total = coords.length - 1;
+  const idx = Math.min(Math.floor(t * total), total - 1);
+  const frac = t * total - idx;
+  const a = coords[idx], b = coords[idx + 1];
+  return [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac];
+}
+
+const STATUS_PROGRESS: Record<OrderStatus, number> = {
+  pending: 0, confirmed: 0.15, preparing: 0.3, delivering: 0.65, delivered: 1, cancelled: 0,
+};
+
+const MapView = ({
+  status, pickupAddress, deliveryAddress,
+}: {
+  status: OrderStatus;
+  pickupAddress: string;
+  deliveryAddress: string;
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const riderMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const routeCoordsRef = useRef<[number, number][]>([]);
+  const animFrameRef = useRef<number>(0);
+  const progressRef = useRef(0);
+
+  // Build map + geocode + route once
   useEffect(() => {
-    const targets: Record<OrderStatus, number> = {
-      pending: 0, confirmed: 8, preparing: 30, delivering: 62, delivered: 100, cancelled: 0,
+    if (!containerRef.current || mapRef.current) return;
+
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style: "mapbox://styles/mapbox/streets-v12",
+      center: ACCRA,
+      zoom: 13,
+      attributionControl: false,
+    });
+    mapRef.current = map;
+
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
+
+    map.on("load", async () => {
+      // Geocode addresses (fallback to Accra offsets)
+      const pickup = (await geocode(pickupAddress)) ?? [ACCRA[0] - 0.02, ACCRA[1] - 0.01] as [number, number];
+      const delivery = (await geocode(deliveryAddress)) ?? [ACCRA[0] + 0.025, ACCRA[1] + 0.018] as [number, number];
+
+      const route = await getRoute(pickup, delivery);
+      routeCoordsRef.current = route;
+
+      // Route line
+      map.addSource("route", {
+        type: "geojson",
+        data: { type: "Feature", geometry: { type: "LineString", coordinates: route }, properties: {} },
+      });
+      map.addLayer({
+        id: "route-line",
+        type: "line",
+        source: "route",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#ef4444", "line-width": 4, "line-opacity": 0.85 },
+      });
+
+      // Pickup marker (green)
+      const pickupEl = document.createElement("div");
+      pickupEl.innerHTML = `<div style="background:#22c55e;width:36px;height:36px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)"><div style="transform:rotate(45deg);display:flex;align-items:center;justify-content:center;height:100%;font-size:14px">🏪</div></div>`;
+      new mapboxgl.Marker({ element: pickupEl, anchor: "bottom" })
+        .setLngLat(pickup)
+        .setPopup(new mapboxgl.Popup({ offset: 25 }).setText("Pickup"))
+        .addTo(map);
+
+      // Delivery marker (red)
+      const deliveryEl = document.createElement("div");
+      deliveryEl.innerHTML = `<div style="background:#ef4444;width:36px;height:36px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)"><div style="transform:rotate(45deg);display:flex;align-items:center;justify-content:center;height:100%;font-size:14px">🏠</div></div>`;
+      new mapboxgl.Marker({ element: deliveryEl, anchor: "bottom" })
+        .setLngLat(delivery)
+        .setPopup(new mapboxgl.Popup({ offset: 25 }).setText("Your location"))
+        .addTo(map);
+
+      // Rider marker
+      const riderEl = document.createElement("div");
+      riderEl.style.cssText = "font-size:28px;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.5));transition:transform 0.3s;cursor:pointer;";
+      riderEl.textContent = "🏍️";
+      const riderMarker = new mapboxgl.Marker({ element: riderEl, anchor: "center" })
+        .setLngLat(pickup)
+        .addTo(map);
+      riderMarkerRef.current = riderMarker;
+
+      // Fit map to show full route
+      const bounds = route.reduce(
+        (b, c) => b.extend(c as [number, number]),
+        new mapboxgl.LngLatBounds(route[0], route[0])
+      );
+      map.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 1200 });
+
+      // Start animation
+      animateRider();
+    });
+
+    return () => {
+      cancelAnimationFrame(animFrameRef.current);
+      map.remove();
+      mapRef.current = null;
     };
-    const target = targets[status] ?? 0;
-    const iv = setInterval(() => {
-      setProgress((p) => { if (p >= target) { clearInterval(iv); return target; } return Math.min(p + 1, target); });
-    }, 25);
-    return () => clearInterval(iv);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Animate rider toward target progress
+  const animateRider = useCallback(() => {
+    const target = STATUS_PROGRESS[status] ?? 0;
+    const coords = routeCoordsRef.current;
+    if (coords.length > 0) {
+      const diff = target - progressRef.current;
+      progressRef.current += diff * 0.02;
+      const pos = interpolate(coords, progressRef.current);
+      riderMarkerRef.current?.setLngLat(pos);
+    }
+    animFrameRef.current = requestAnimationFrame(animateRider);
   }, [status]);
 
-  const sX = 55, sY = 170, eX = 335, eY = 48, cX = 195, cY = 25;
-  const bz = (t: number) => ({
-    x: (1-t)*(1-t)*sX + 2*(1-t)*t*cX + t*t*eX,
-    y: (1-t)*(1-t)*sY + 2*(1-t)*t*cY + t*t*eY,
-  });
-  const t = progress / 100;
-  const r = bz(t);
+  // Re-run animation loop when status changes
+  useEffect(() => {
+    cancelAnimationFrame(animFrameRef.current);
+    animFrameRef.current = requestAnimationFrame(animateRider);
+    return () => cancelAnimationFrame(animFrameRef.current);
+  }, [animateRider]);
+
+  const isActive = status !== "pending" && status !== "cancelled";
 
   return (
-    <div className="relative w-full overflow-hidden rounded-3xl bg-[#0d1117]" style={{ height: 220 }}>
-      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 215" preserveAspectRatio="xMidYMid slice">
-        {[38,80,125,170].map(y=><line key={y} x1="0" y1={y} x2="400" y2={y} stroke="#1e293b" strokeWidth="14"/>)}
-        {[50,120,200,280,350].map(x=><line key={x} x1={x} y1="0" x2={x} y2="215" stroke="#1e293b" strokeWidth="10"/>)}
-        {[[55,42,60,32],[130,42,65,32],[205,42,65,32],[290,42,55,32],[55,88,60,30],[130,88,65,30],[205,88,65,30],[290,88,55,30],[55,133,60,28],[130,133,65,28],[205,133,65,28],[290,133,55,28]].map(([x,y,w,h],i)=>(
-          <rect key={i} x={x} y={y} width={w} height={h} rx="3" fill="#0f1923"/>
-        ))}
-        <path d={`M${sX} ${sY} Q${cX} ${cY} ${eX} ${eY}`} stroke="#ef4444" strokeWidth="2.5" strokeDasharray="10 5" fill="none" strokeLinecap="round" opacity="0.4"/>
-        {progress>0&&<path d={`M${sX} ${sY} Q${cX} ${cY} ${r.x} ${r.y}`} stroke="#ef4444" strokeWidth="2.5" fill="none" strokeLinecap="round"/>}
-        {status!=="delivered"&&<circle cx={sX} cy={sY} r="12" fill="#22c55e" opacity="0.2"><animate attributeName="r" values="8;16;8" dur="2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.3;0;0.3" dur="2s" repeatCount="indefinite"/></circle>}
-        <circle cx={sX} cy={sY} r="8" fill="#22c55e"/>
-        <text x={sX} y={sY+1} textAnchor="middle" dominantBaseline="middle" fontSize="9" fill="white" fontWeight="bold">P</text>
-        <circle cx={eX} cy={eY} r="8" fill={progress>=100?"#22c55e":"#ef4444"}/>
-        <text x={eX} y={eY+1} textAnchor="middle" dominantBaseline="middle" fontSize="9" fill="white" fontWeight="bold">{progress>=100?"✓":"D"}</text>
-        {progress>0&&status!=="cancelled"&&<text x={r.x-10} y={r.y+6} fontSize="18" style={{filter:"drop-shadow(0 2px 6px rgba(0,0,0,0.9))"}}>🏍️</text>}
-      </svg>
-      <div className="absolute bottom-3 left-3 flex items-center gap-1 rounded-lg bg-green-500/20 border border-green-500/30 px-2 py-1 text-[11px] font-semibold text-green-400">
-        <div className="h-2 w-2 rounded-full bg-green-400"/> Pickup
-      </div>
-      <div className="absolute top-3 right-3 flex items-center gap-1 rounded-lg bg-red-500/20 border border-red-500/30 px-2 py-1 text-[11px] font-semibold text-red-400">
-        <div className="h-2 w-2 rounded-full bg-red-400"/> You
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800">
-        <div className="h-full bg-primary transition-all duration-700" style={{width:`${progress}%`}}/>
+    <div className="relative w-full overflow-hidden rounded-3xl shadow-lg" style={{ height: 260 }}>
+      <div ref={containerRef} className="absolute inset-0"/>
+      {/* Status pill overlay */}
+      <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-none">
+        <div className="flex items-center gap-1.5 rounded-full bg-white/90 backdrop-blur-sm px-3 py-1.5 shadow text-xs font-semibold text-green-700">
+          <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"/> Pickup
+        </div>
+        {isActive && (
+          <div className="flex items-center gap-1.5 rounded-full bg-primary/90 backdrop-blur-sm px-3 py-1.5 shadow text-xs font-semibold text-white">
+            🏍️ Rider en route
+          </div>
+        )}
+        <div className="flex items-center gap-1.5 rounded-full bg-white/90 backdrop-blur-sm px-3 py-1.5 shadow text-xs font-semibold text-red-600">
+          <div className="h-2 w-2 rounded-full bg-red-500"/> You
+        </div>
       </div>
     </div>
   );
@@ -432,7 +559,7 @@ const TrackingPage = () => {
 
       <div className="container mx-auto max-w-lg flex-1 space-y-4 px-4 py-5 pb-8">
 
-        <MapView status={order.status}/>
+        <MapView status={order.status} pickupAddress={pickupAddr} deliveryAddress={deliveryAddr}/>
 
         {/* ETA bar */}
         <div className="flex items-center gap-4 rounded-2xl border border-border bg-card p-4 shadow-card">

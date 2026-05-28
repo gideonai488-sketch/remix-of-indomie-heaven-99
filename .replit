@@ -25,6 +25,7 @@ timeoutMs = 20000
 VITE_SUPABASE_URL = "https://cgadnsuyezixjdrjkbvb.supabase.co"
 VITE_SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNnYWRuc3V5ZXppeGpkcmprYnZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4MjI0OTgsImV4cCI6MjA5NTM5ODQ5OH0.kePPhpHopt1Ks5MjnjTQLyAPXwsGnAVGx8Xv2HMBuGY"
 VITE_SUPABASE_PROJECT_ID = "cgadnsuyezixjdrjkbvb"
+VITE_MAPBOX_TOKEN = "pk.eyJ1IjoidHJhdmVsbWF0ZTExMjMiLCJhIjoiY21oc2hmM3g5MGo0ajJzcjg1cHgzYjFtYSJ9.5WCLBT_KSghCcRtzH3xreQ"
 
 [[ports]]
 localPort = 8080
