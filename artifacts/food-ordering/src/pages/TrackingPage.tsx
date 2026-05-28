@@ -201,14 +201,20 @@ const MapView = ({
       setMapFailed(true);
       return;
     }
-    map.on("error", (e) => {
-      if (e?.error?.status === 401 || e?.error?.status === 403) setMapFailed(true);
-    });
+    // Catch any map error (auth, network, style, WebGL, etc.)
+    map.on("error", () => { setMapFailed(true); });
     mapRef.current = map;
+
+    // Fallback: if map hasn't loaded within 12s, show the animated fallback
+    const loadTimeout = setTimeout(() => {
+      if (!mapRef.current) return;
+      setMapFailed(true);
+    }, 12000);
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
 
     map.on("load", async () => {
+      clearTimeout(loadTimeout);
       setMapReady(true);
       // Pickup: geocode address
       let pickup = (await geocode(pickupAddress)) ?? [ACCRA[0] - 0.02, ACCRA[1] - 0.01] as [number, number];
@@ -275,6 +281,7 @@ const MapView = ({
     });
 
     return () => {
+      clearTimeout(loadTimeout);
       cancelAnimationFrame(animFrameRef.current);
       map.remove();
       mapRef.current = null;
@@ -801,22 +808,27 @@ const TrackingPage = () => {
         {order.status==="pending" && (
           <button
             onClick={async () => {
+              if (!window.confirm("Cancel this order?")) return;
               try {
-                const { error: fnErr } = await supabase.functions.invoke("cancel-order", {
-                  body: { order_id: id, reason: "Customer cancelled" },
-                });
-                if (fnErr) {
-                  // Edge function unavailable — update status directly
-                  const { error: dbErr } = await (supabase as any)
-                    .from("orders")
-                    .update({ status: "cancelled" })
-                    .eq("id", id);
-                  if (dbErr) throw dbErr;
+                // Try direct DB update first (works if RLS allows it)
+                const { error: dbErr } = await (supabase as any)
+                  .from("orders")
+                  .update({ status: "cancelled" })
+                  .eq("id", id)
+                  .eq("status", "pending");
+
+                if (dbErr) {
+                  // Fallback: try edge function
+                  const { error: fnErr } = await supabase.functions.invoke("cancel-order", {
+                    body: { order_id: id, reason: "Customer cancelled" },
+                  });
+                  if (fnErr) throw new Error("Cancel failed — please contact support.");
                 }
-                toast("Order cancelled.");
-                navigate("/orders", { replace: true });
-              } catch {
-                toast.error("Could not cancel order — please try again.");
+
+                toast.success("Order cancelled.");
+                navigate("/", { replace: true });
+              } catch (e: any) {
+                toast.error(e?.message || "Could not cancel — please try again.");
               }
             }}
             className="w-full rounded-2xl border border-red-200 py-3 text-sm font-semibold text-red-500 hover:bg-red-50 transition-colors"

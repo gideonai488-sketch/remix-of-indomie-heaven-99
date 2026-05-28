@@ -71,3 +71,20 @@ CREATE POLICY "Users can update own requests"
 
 -- Enable Realtime (run this separately if needed)
 -- ALTER PUBLICATION supabase_realtime ADD TABLE service_requests;
+
+-- ============================================================
+-- Orders: allow customers to cancel their own pending orders
+-- Run this in Supabase SQL Editor if cancel button doesn't work
+-- ============================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'orders' AND policyname = 'Customers can cancel own pending orders'
+  ) THEN
+    CREATE POLICY "Customers can cancel own pending orders"
+      ON public.orders FOR UPDATE
+      USING (auth.uid() = user_id AND status = 'pending')
+      WITH CHECK (status = 'cancelled');
+  END IF;
+END $$;
