@@ -10,7 +10,6 @@ import {
   ChevronLeft,
   Menu,
   X,
-  Image,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -18,7 +17,6 @@ const navItems = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/admin/orders", label: "Orders", icon: ShoppingCart },
   { to: "/admin/menu", label: "Menu", icon: UtensilsCrossed },
-  { to: "/admin/banners", label: "Banners", icon: Image },
   { to: "/admin/customers", label: "Customers", icon: Users },
 ];
 
