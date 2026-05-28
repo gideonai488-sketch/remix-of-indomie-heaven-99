@@ -11,7 +11,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 
 mapboxgl.accessToken = "pk.eyJ1IjoidHJhdmVsbWF0ZTExMjMiLCJhIjoiY21oc2hmM3g5MGo0ajJzcjg1cHgzYjFtYSJ9.5WCLBT_KSghCcRtzH3xreQ";
 
-type OrderStatus = "pending" | "confirmed" | "preparing" | "delivering" | "delivered" | "cancelled";
+type OrderStatus = "pending" | "searching_rider" | "assigned" | "accepted" | "confirmed" | "preparing" | "picked_up" | "in_transit" | "delivered" | "cancelled";
 
 interface TrackOrder {
   id: string;
@@ -152,7 +152,8 @@ function calcBearing([lng1, lat1]: [number, number], [lng2, lat2]: [number, numb
 }
 
 const STATUS_PROGRESS: Record<OrderStatus, number> = {
-  pending: 0, confirmed: 0.15, preparing: 0.3, delivering: 0.65, delivered: 1, cancelled: 0,
+  pending: 0, searching_rider: 0.05, confirmed: 0.15, assigned: 0.2, accepted: 0.25,
+  preparing: 0.3, picked_up: 0.5, in_transit: 0.75, delivered: 1, cancelled: 0,
 };
 
 const MapView = ({
@@ -387,7 +388,10 @@ const STEPS = [
   { key: "delivering", label: "On the Way", icon: "🏍️" },
   { key: "delivered", label: "Delivered", icon: "🎉" },
 ] as const;
-const ORDER_IDX: Record<OrderStatus, number> = { pending:0, confirmed:1, preparing:2, delivering:2, delivered:3, cancelled:-1 };
+const ORDER_IDX: Record<OrderStatus, number> = {
+  pending:0, searching_rider:0, confirmed:1, assigned:1, accepted:1,
+  preparing:2, picked_up:2, in_transit:2, delivered:3, cancelled:-1,
+};
 
 const StatusStepper = ({ status }: { status: OrderStatus }) => (
   <div className="flex items-start gap-1">
@@ -631,7 +635,7 @@ const TrackingPage = () => {
   useEffect(() => {
     if (!id) return;
     supabase.from("orders").select("*, order_items(*)").eq("id", id).single()
-      .then(({ data }) => { if (data) { const o = data as unknown as TrackOrder; setOrder(o); if (o.status==="delivering") setMeterRunning(true); } setLoading(false); });
+      .then(({ data }) => { if (data) { const o = data as unknown as TrackOrder; setOrder(o); if (o.status==="in_transit") setMeterRunning(true); } setLoading(false); });
   }, [id]);
 
   useEffect(() => {
@@ -640,9 +644,9 @@ const TrackingPage = () => {
       .on("postgres_changes", { event:"UPDATE", schema:"public", table:"orders", filter:`id=eq.${id}` }, (payload) => {
         const u = payload.new as unknown as TrackOrder;
         setOrder(prev => prev ? {...prev, ...u} : u);
-        if (u.status==="confirmed") toast.success("🎉 Rider accepted your order!");
-        if (u.status==="preparing") toast.success("🏍️ Rider is on the way to pick up!");
-        if (u.status==="delivering") { toast.success("🚀 Rider heading to you!"); setMeterRunning(true); }
+        if (u.status==="confirmed" || u.status==="assigned" || u.status==="accepted") toast.success("🎉 Rider accepted your order!");
+        if (u.status==="preparing" || u.status==="picked_up") toast.success("🏍️ Rider is on the way to pick up!");
+        if (u.status==="in_transit") { toast.success("🚀 Rider heading to you!"); setMeterRunning(true); }
         if (u.status==="delivered") { setMeterRunning(false); toast.success("✅ Delivered!"); setShowPayment(true); }
         if (u.status==="cancelled") toast.error("Order cancelled.");
       }).subscribe();
@@ -662,9 +666,9 @@ const TrackingPage = () => {
       const u = data as unknown as TrackOrder;
       setOrder(prev => {
         if (!prev || prev.status === u.status) return prev; // no change
-        if (u.status==="confirmed") toast.success("🎉 Rider accepted your order!");
-        if (u.status==="preparing") toast.success("🏍️ Rider is on the way to pick up!");
-        if (u.status==="delivering") { toast.success("🚀 Rider heading to you!"); setMeterRunning(true); }
+        if (u.status==="confirmed" || u.status==="assigned" || u.status==="accepted") toast.success("🎉 Rider accepted your order!");
+        if (u.status==="preparing" || u.status==="picked_up") toast.success("🏍️ Rider is on the way to pick up!");
+        if (u.status==="in_transit") { toast.success("🚀 Rider heading to you!"); setMeterRunning(true); }
         if (u.status==="delivered") { setMeterRunning(false); toast.success("✅ Delivered!"); setShowPayment(true); }
         if (u.status==="cancelled") toast.error("Order cancelled.");
         return u;
@@ -681,12 +685,16 @@ const TrackingPage = () => {
   const isServiceOrder = !!serviceType;
 
   const statusLabel: Record<OrderStatus, string> = {
-    pending:"Finding Rider…", confirmed:"Rider Assigned", preparing:"Heading to Pickup",
-    delivering:"On the Way", delivered:"Delivered ✓", cancelled:"Cancelled",
+    pending:"Finding Rider…", searching_rider:"Finding Rider…",
+    confirmed:"Rider Assigned", assigned:"Rider Assigned", accepted:"Rider Assigned",
+    preparing:"Heading to Pickup", picked_up:"Picked Up",
+    in_transit:"On the Way", delivered:"Delivered ✓", cancelled:"Cancelled",
   };
   const eta: Record<OrderStatus, string> = {
-    pending:"Matching…", confirmed:"~20 min", preparing:"~15 min",
-    delivering:"~8 min", delivered:"Done", cancelled:"—",
+    pending:"Matching…", searching_rider:"Matching…",
+    confirmed:"~20 min", assigned:"~20 min", accepted:"~18 min",
+    preparing:"~15 min", picked_up:"~10 min",
+    in_transit:"~5 min", delivered:"Done", cancelled:"—",
   };
 
   const pickupAddr = isServiceOrder ? (parsedNotes?.pickup_address || "Pickup location") : "Restaurant / Shop";
@@ -737,7 +745,7 @@ const TrackingPage = () => {
         </div>
 
         {/* Searching */}
-        {order.status==="pending" && (
+        {(order.status==="pending" || order.status==="searching_rider") && (
           <div className="rounded-2xl border border-border bg-card shadow-card"><SearchingRider/></div>
         )}
 
@@ -811,7 +819,7 @@ const TrackingPage = () => {
         )}
 
         {/* Cancel */}
-        {order.status==="pending" && (
+        {(order.status==="pending" || order.status==="searching_rider") && (
           <button
             onClick={async () => {
               if (!window.confirm("Cancel this order?")) return;
@@ -820,7 +828,7 @@ const TrackingPage = () => {
                   .from("orders")
                   .update({ status: "cancelled" })
                   .eq("id", id)
-                  .eq("status", "pending")
+                  .in("status", ["pending", "searching_rider"])
                   .select("id, status");
 
                 if (dbErr) throw new Error(dbErr.message);
