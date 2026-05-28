@@ -111,12 +111,14 @@ const CheckoutPage = () => {
       }));
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
       const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = session?.access_token ?? supabaseKey;
       const itemsRes = await fetch(`${supabaseUrl}/rest/v1/order_items`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "apikey": supabaseKey,
-          "Authorization": `Bearer ${supabaseKey}`,
+          "Authorization": `Bearer ${authToken}`,
           "Prefer": "return=minimal",
         },
         body: JSON.stringify(orderItems),
