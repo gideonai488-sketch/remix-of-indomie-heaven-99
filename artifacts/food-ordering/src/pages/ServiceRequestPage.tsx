@@ -167,6 +167,25 @@ const ServiceRequestPage = () => {
         price: BASE_FARE,
       });
 
+      // Also insert to service_bookings so the backend can track it
+      await (supabase as any).from("service_bookings").insert({
+        user_id: user.id,
+        order_id: order.id,
+        service_type: serviceType,
+        pickup_address: pickupAddress,
+        delivery_address: deliveryAddress,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        details: buildDetails(),
+        notes: notes || null,
+        status: "pending",
+      }).then(() => {});
+
+      // Trigger rider dispatch (finds nearest verified riders within 15km)
+      await supabase.functions.invoke("dispatch-rider", {
+        body: { order_id: order.id },
+      });
+
       toast.success("Request submitted! Finding you a rider… 🏍️");
       navigate(`/track/${order.id}?type=service`);
     } catch (e: any) {

@@ -164,6 +164,11 @@ const CheckoutPage = () => {
         const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
         if (itemsErr) throw itemsErr;
 
+        // Trigger rider dispatch (finds nearest verified riders within 15km)
+        await supabase.functions.invoke("dispatch-rider", {
+          body: { order_id: order.id },
+        });
+
         clearCart();
         toast.success("Order placed! Finding you a rider… 🏍️");
         navigate(`/track/${order.id}?type=food`);

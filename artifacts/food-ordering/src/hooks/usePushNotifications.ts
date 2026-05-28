@@ -32,7 +32,7 @@ export const usePushNotifications = () => {
           const platform = Capacitor.getPlatform(); // 'ios' or 'android'
 
           // Upsert token to database
-          const { error } = await supabase.from("device_tokens").upsert(
+          const { error } = await supabase.from("push_tokens").upsert(
             {
               user_id: user.id,
               token: token.value,
