@@ -7,7 +7,6 @@ import { CartProvider } from "@/context/CartContext";
 import { AuthProvider } from "@/context/AuthContext";
 import { lazy, Suspense, useEffect, Component, ReactNode } from "react";
 import AppLoadingSkeleton from "@/components/AppLoadingSkeleton";
-import { isNativePlatform } from "@/lib/platform";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -53,12 +52,6 @@ const TrackingPage = lazy(() => import("./pages/TrackingPage"));
 const DemoTrackingPage = lazy(() => import("./pages/DemoTrackingPage"));
 const OrdersPage = lazy(() => import("./pages/OrdersPage"));
 
-const AdminLayout = lazy(() => import("./components/admin/AdminLayout"));
-const AdminDashboardPage = lazy(() => import("./pages/admin/DashboardPage"));
-const AdminOrdersPage = lazy(() => import("./pages/admin/OrdersPage"));
-const MenuManagementPage = lazy(() => import("./pages/admin/MenuManagementPage"));
-const CustomersPage = lazy(() => import("./pages/admin/CustomersPage"));
-const PromoBannersPage = lazy(() => import("./pages/admin/PromoBannersPage"));
 
 const queryClient = new QueryClient();
 
@@ -77,8 +70,6 @@ const PushRegistrar = () => {
   usePushNotifications();
   return null;
 };
-
-const showAdmin = !isNativePlatform();
 
 const HomeRoute = () => {
   if (!localStorage.getItem("speedup_onboarded")) {
@@ -111,15 +102,6 @@ const App = () => (
                   <Route path="/service-request/:type" element={<ServiceRequestPage />} />
                   <Route path="/track/:id" element={<TrackingPage />} />
                   <Route path="/demo" element={<DemoTrackingPage />} />
-                  {showAdmin && (
-                    <Route path="/admin" element={<AdminLayout />}>
-                      <Route index element={<AdminDashboardPage />} />
-                      <Route path="orders" element={<AdminOrdersPage />} />
-                      <Route path="menu" element={<MenuManagementPage />} />
-                      <Route path="customers" element={<CustomersPage />} />
-                      <Route path="banners" element={<PromoBannersPage />} />
-                    </Route>
-                  )}
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>

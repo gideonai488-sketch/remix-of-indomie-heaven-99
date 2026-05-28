@@ -3,20 +3,19 @@ import { useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
-// Fallback videos baked into the app (used when Supabase storage is empty / unreachable)
 import promoVideo1 from "@/assets/promo-video-1.mp4";
 import promoVideo2 from "@/assets/promo-video-2.mp4";
 import promoVideo3 from "@/assets/promo-video-3.mp4";
 
 const fallbackVideos = [
-  { src: promoVideo1, label: "", subtitle: "", cta: "" },
-  { src: promoVideo2, label: "", subtitle: "", cta: "" },
-  { src: promoVideo3, label: "", subtitle: "", cta: "" },
+  { src: promoVideo1, title: "SpeedUp", subtitle: "Fastest delivery in Ghana", cta: "Order Now" },
+  { src: promoVideo2, title: "New Bowls", subtitle: "Fresh every day", cta: "Explore" },
+  { src: promoVideo3, title: "Jollof Special", subtitle: "Spice up your week", cta: "Order Now" },
 ];
 
 interface BannerSlide {
   src: string;
-  label: string;
+  title: string;
   subtitle: string;
   cta: string;
 }
@@ -25,50 +24,31 @@ const PromoBanner = () => {
   const navigate = useNavigate();
   const [slides, setSlides] = useState<BannerSlide[]>([]);
   const [current, setCurrent] = useState(0);
-  const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  // Fetch from Supabase Storage bucket on mount
+  // Fetch from promo_banners table on mount
   useEffect(() => {
     const load = async () => {
       try {
-        const bucketName = "promo-videos";
-        const { data: files, error } = await supabase.storage.from(bucketName).list("", { limit: 20 });
-        if (error) {
-          console.warn("[PromoBanner] storage list error:", error.message);
+        const { data: rows, error } = await supabase
+          .from("promo_banners")
+          .select("title, subtitle, cta, file_path, bucket")
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true });
+
+        if (error || !rows || rows.length === 0) {
+          console.warn("[PromoBanner] db load failed, using fallback", error?.message);
           setSlides(fallbackVideos);
           return;
         }
 
-        let allMedia: { name: string; path: string }[] = [];
-        const rootFiles = (files || []).filter((f) => {
-          const name = f.name.toLowerCase();
-          return !name.startsWith(".") && (name.endsWith(".mp4") || name.endsWith(".webm") || name.endsWith(".mov") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg"));
-        });
-        allMedia.push(...rootFiles.map((f) => ({ name: f.name, path: f.name })));
-
-        const folders = (files || []).filter((f) => f.id === null && !f.name.startsWith("."));
-        for (const folder of folders) {
-          const { data: subFiles } = await supabase.storage.from(bucketName).list(folder.name, { limit: 20 });
-          const subMedia = (subFiles || []).filter((f) => {
-            const name = f.name.toLowerCase();
-            return name.endsWith(".mp4") || name.endsWith(".webm") || name.endsWith(".mov") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg");
-          });
-          allMedia.push(...subMedia.map((f) => ({ name: f.name, path: `${folder.name}/${f.name}` })));
-        }
-
-        if (allMedia.length === 0) {
-          console.warn(`[PromoBanner] bucket '${bucketName}' is empty or private.`);
-          setSlides(fallbackVideos);
-          return;
-        }
-
-        const mapped: BannerSlide[] = allMedia.map((m) => {
-          const { data } = supabase.storage.from(bucketName).getPublicUrl(m.path);
+        const mapped: BannerSlide[] = (rows as any[]).map((r) => {
+          const { data } = supabase.storage.from(r.bucket || "promo-videos").getPublicUrl(r.file_path);
           return {
             src: data.publicUrl,
-            label: "",
-            subtitle: "",
-            cta: "",
+            title: r.title || "",
+            subtitle: r.subtitle || "",
+            cta: r.cta || "",
           };
         });
         setSlides(mapped);
@@ -89,47 +69,60 @@ const PromoBanner = () => {
     return () => clearInterval(t);
   }, [slides.length]);
 
-  // Only play the current video; pause all others
+  // Play current video
   useEffect(() => {
-    videoRefs.current.forEach((v, i) => {
-      if (!v) return;
-      if (i === current) {
-        v.play().catch(() => {});
-      } else {
-        v.pause();
-      }
-    });
-  }, [current, slides.length]);
+    if (videoRef.current) {
+      videoRef.current.play().catch(() => {});
+    }
+  }, [current]);
 
   if (slides.length === 0) return null;
 
+  const slide = slides[current];
+  const isVideo = slide.src.match(/\.(mp4|webm|mov)(\?.*)?$/i);
+
   return (
     <section className="container mx-auto px-4 py-5">
-      <div
-        className="group relative cursor-pointer overflow-hidden rounded-3xl shadow-md ring-1 ring-black/10"
-        onClick={() => navigate("/menu")}
-      >
-        {/* Media layer — only render the current slide */}
+      <div className="group relative cursor-pointer overflow-hidden rounded-3xl shadow-md ring-1 ring-black/10">
+        {/* Media layer */}
         <div className="relative h-52 w-full sm:h-64 md:h-72">
-          {slides.map((s, i) => (
-            i === current && (
-              <div key={i} className="absolute inset-0 h-full w-full">
-                {s.src.match(/\.(mp4|webm|mov)(\?.*)?$/i) ? (
-                  <video
-                    ref={(el) => { videoRefs.current[i] = el; }}
-                    src={s.src}
-                    className="h-full w-full object-cover"
-                    autoPlay
-                    loop
-                    playsInline
-                    muted={false}
-                  />
-                ) : (
-                  <img src={s.src} alt="" className="h-full w-full object-cover" />
-                )}
-              </div>
-            )
-          ))}
+          {isVideo ? (
+            <video
+              ref={videoRef}
+              src={slide.src}
+              className="h-full w-full object-cover"
+              autoPlay
+              loop
+              playsInline
+              muted={false}
+            />
+          ) : (
+            <img src={slide.src} alt={slide.title} className="h-full w-full object-cover" />
+          )}
+
+          {/* Text overlay */}
+          {(slide.title || slide.subtitle || slide.cta) && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 text-center p-4">
+              {slide.title && (
+                <h2 className="text-xl font-bold text-white sm:text-2xl md:text-3xl drop-shadow-lg">
+                  {slide.title}
+                </h2>
+              )}
+              {slide.subtitle && (
+                <p className="mt-1 text-sm text-white/90 sm:text-base drop-shadow">
+                  {slide.subtitle}
+                </p>
+              )}
+              {slide.cta && (
+                <button
+                  onClick={() => navigate("/menu")}
+                  className="mt-3 rounded-full bg-primary px-5 py-2 text-sm font-bold text-white shadow-md hover:bg-primary/90"
+                >
+                  {slide.cta}
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Arrows */}

@@ -6,12 +6,10 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, User, MapPin, Package, Plus, Trash2, LogOut, Save,
-  Clock, Shield, Wallet, Settings, ChevronRight, Phone, Mail,
+  Clock, Wallet, Settings, ChevronRight, Phone, Mail,
   Star, Bike, Box, Pill, ShoppingBag, CheckCircle2, XCircle,
   Eye, EyeOff, Lock,
 } from "lucide-react";
-import { useAdminRole } from "@/hooks/useAdminRole";
-import { isNativePlatform } from "@/lib/platform";
 
 type Tab = "account" | "orders" | "addresses" | "wallet" | "settings";
 
@@ -66,7 +64,6 @@ const Field = ({
 
 const ProfilePage = () => {
   const { user, signOut } = useAuth();
-  const { isAdmin } = useAdminRole();
   const navigate = useNavigate();
 
   const [tab, setTab] = useState<Tab>("account");
@@ -461,19 +458,6 @@ const ProfilePage = () => {
         {/* ── SETTINGS ── */}
         {tab === "settings" && (
           <div className="space-y-3">
-            {isAdmin && !isNativePlatform() && (
-              <button onClick={() => navigate("/admin")}
-                className="flex w-full items-center justify-between rounded-2xl border border-primary/30 bg-primary/5 p-4 hover:bg-primary/10">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-full bg-primary/15 p-2.5"><Shield className="h-5 w-5 text-primary" /></div>
-                  <div className="text-left">
-                    <p className="font-semibold text-primary">Admin Panel</p>
-                    <p className="text-xs text-muted-foreground">Manage orders & riders</p>
-                  </div>
-                </div>
-                <ChevronRight className="h-4 w-4 text-primary" />
-              </button>
-            )}
 
             {[
               { label: "Order History", sub: "View all past orders", icon: <Package className="h-5 w-5 text-muted-foreground" />, action: () => setTab("orders") },
