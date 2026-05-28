@@ -153,13 +153,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { error: new Error("Wrong password. Try again.") };
     }
 
-    // Account not found at all
-    return { error: new Error("No account found. Please sign up first.") };
+    // Account not found — guide them to use email
+    return { error: new Error("Account not found. If you signed up with an email, use that to sign in.") };
   };
 
   const signOut = async () => { await supabase.auth.signOut(); };
-
-  if (loading) return null;
 
   return (
     <AuthContext.Provider value={{ user, session, loading, sendOtp, verifyOtp, signUp, signUpWithPhone, signIn, signInWithPhone, signOut }}>

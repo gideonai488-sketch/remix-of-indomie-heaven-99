@@ -200,7 +200,9 @@ const MapView = ({
       setMapFailed(true);
       return;
     }
-    map.on("error", () => setMapFailed(true));
+    map.on("error", (e) => {
+      if (e?.error?.status === 401 || e?.error?.status === 403) setMapFailed(true);
+    });
     mapRef.current = map;
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");

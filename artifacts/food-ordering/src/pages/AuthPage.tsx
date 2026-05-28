@@ -190,8 +190,8 @@ const AuthPage = () => {
             {/* -------- LOGIN -------- */}
             {tab === "login" && (
               <form onSubmit={handleLogin} className="space-y-4">
-                <InputField label="Phone Number" placeholder="+1 XXX XXX XXXX" value={loginPhone}
-                  onChange={setLoginPhone} type="tel" icon={Phone} autoComplete="tel"
+                <InputField label="Email or Phone" placeholder="you@email.com or 0244..." value={loginPhone}
+                  onChange={setLoginPhone} type="text" icon={Phone} autoComplete="username"
                 />
                 <InputField label="Password" placeholder="Your password" value={loginPassword}
                   onChange={setLoginPassword} type={showPassword ? "text" : "password"}
