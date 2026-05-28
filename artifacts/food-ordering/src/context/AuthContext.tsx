@@ -65,8 +65,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const normalizePhone = (phone: string) =>
-    phone.replace(/\s+/g, "").replace(/^0/, "+233");
+  const normalizePhone = (phone: string) => {
+    const cleaned = phone.replace(/\s+/g, "").replace(/[^\d+]/g, "");
+    // Ghana local: 0XXXXXXXXX → +233XXXXXXXXX
+    if (cleaned.startsWith("0") && cleaned.length === 10) {
+      return "+233" + cleaned.slice(1);
+    }
+    // International already: +233XXXXXXXXX
+    if (cleaned.startsWith("+")) return cleaned;
+    // Bare number without 0: 244123456 → +233244123456
+    if (cleaned.length === 9 && /^[2-9]/.test(cleaned)) {
+      return "+233" + cleaned;
+    }
+    return cleaned;
+  };
 
   const sendOtp = async (phone: string): Promise<{ error: string | null }> => {
     const normalized = normalizePhone(phone);
@@ -192,6 +204,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const cleaned = normalizePhone(input);
     const syntheticEmail = `${cleaned.replace("+", "")}@speedup.app`;
 
+    // Try 1: sign in with the synthetic email (most common for phone-only users)
     const { error: syntheticErr } = await supabase.auth.signInWithPassword({ email: syntheticEmail, password });
     if (!syntheticErr) return { error: null };
 
@@ -202,22 +215,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { error: new Error("Account not confirmed. In Supabase → Authentication → Email, disable 'Confirm email', then try again.") };
     }
 
-    if (syntheticErr.message?.toLowerCase().includes("invalid")) {
-      // Try to find a real email from profiles
-      for (const variant of [cleaned, input]) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("email")
-          .eq("phone", variant)
-          .maybeSingle();
-        if (data?.email && data.email !== syntheticEmail) {
-          return trySignIn(data.email);
-        }
-      }
-      return { error: new Error("Wrong password. Try again.") };
+    // Try 2: look up the real email from profiles by phone
+    // We need to check multiple phone formats because the stored phone may differ
+    const phoneVariants = [cleaned, input, cleaned.replace("+", "")];
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("email, phone")
+      .or(phoneVariants.map((v) => `phone.eq.${v}`).join(","))
+      .maybeSingle();
+
+    if (profile?.email && profile.email !== syntheticEmail) {
+      const { error: profileErr } = await trySignIn(profile.email);
+      if (!profileErr) return { error: null };
     }
 
-    return { error: new Error("Account not found. If you signed up with an email, enter that instead.") };
+    // Try 3: also check if the user typed the phone without the leading 0
+    const noLeadingZero = input.replace(/^0/, "");
+    const { data: profile2 } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("phone", noLeadingZero)
+      .maybeSingle();
+    if (profile2?.email && profile2.email !== syntheticEmail) {
+      const { error: profile2Err } = await trySignIn(profile2.email);
+      if (!profile2Err) return { error: null };
+    }
+
+    // Supabase intentionally returns "Invalid login credentials" for both
+    // "wrong password" and "account not found" to avoid leaking info.
+    // We can't tell which one, so give a helpful message.
+    return { error: new Error("Invalid credentials. Make sure the password is correct and the phone number is in the same format used when signing up.") };
   };
 
   const signOut = async () => {

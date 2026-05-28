@@ -9,7 +9,9 @@ import { toast } from "sonner";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string;
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
+const MAPBOX_OK = !!MAPBOX_TOKEN;
+if (MAPBOX_OK) mapboxgl.accessToken = MAPBOX_TOKEN;
 
 type OrderStatus = "pending" | "searching_rider" | "assigned" | "accepted" | "confirmed" | "preparing" | "picked_up" | "in_transit" | "delivered" | "cancelled";
 
@@ -108,8 +110,7 @@ const FareMeter = ({ running, finalAmount }: { running: boolean; finalAmount: nu
 
 // -------- Mapbox Live Tracking Map --------
 const ACCRA: [number, number] = [-0.1870, 5.6037];
-// Public pk.* token — safe to hardcode in frontend code
-const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
+const TOKEN = MAPBOX_TOKEN;
 
 async function geocode(query: string): Promise<[number, number] | null> {
   try {
