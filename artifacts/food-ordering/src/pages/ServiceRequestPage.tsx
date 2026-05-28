@@ -159,11 +159,11 @@ const ServiceRequestPage = () => {
 
       if (orderErr) throw orderErr;
 
-      await supabase.from("order_items").insert({
+      await (supabase as any).from("order_items").insert({
         order_id: order.id,
-        item_id: `service-${serviceType}`,
         item_name: `${svcDef.label} ${svcDef.icon}`,
         quantity: 1,
+        unit_price: BASE_FARE,
         price: BASE_FARE,
       });
 

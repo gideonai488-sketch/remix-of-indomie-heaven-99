@@ -369,6 +369,30 @@ const TrackingPage = () => {
     return () => { supabase.removeChannel(ch); };
   }, [id]);
 
+  // Polling fallback — updates every 8s in case Realtime is not enabled on orders table
+  useEffect(() => {
+    if (!id) return;
+    const poll = setInterval(async () => {
+      const { data } = await supabase
+        .from("orders")
+        .select("*, order_items(*)")
+        .eq("id", id)
+        .single();
+      if (!data) return;
+      const u = data as unknown as TrackOrder;
+      setOrder(prev => {
+        if (!prev || prev.status === u.status) return prev; // no change
+        if (u.status==="confirmed") toast.success("🎉 Rider accepted your order!");
+        if (u.status==="preparing") toast.success("🏍️ Rider is on the way to pick up!");
+        if (u.status==="delivering") { toast.success("🚀 Rider heading to you!"); setMeterRunning(true); }
+        if (u.status==="delivered") { setMeterRunning(false); toast.success("✅ Delivered!"); setShowPayment(true); }
+        if (u.status==="cancelled") toast.error("Order cancelled.");
+        return u;
+      });
+    }, 8000);
+    return () => clearInterval(poll);
+  }, [id]);
+
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>;
   if (!order) return <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background p-4"><p className="text-muted-foreground">Order not found.</p><Button onClick={()=>navigate("/")}>Go Home</Button></div>;
 
