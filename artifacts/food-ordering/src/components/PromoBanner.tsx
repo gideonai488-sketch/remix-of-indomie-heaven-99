@@ -26,12 +26,16 @@ const PromoBanner = () => {
   const [current, setCurrent] = useState(0);
   const brokenRef = useRef<Set<number>>(new Set());
   const [tick, setTick] = useState(0); // force re-render when broken set changes
+  const mediaRef = useRef<HTMLVideoElement | HTMLImageElement | null>(null);
 
-  // Load slides once on mount
+  // Load slides once on mount.
+  // Priority: 1) promo_banners table (if exists), 2) storage bucket promo-videos,
+  // 3) local hardcoded fallback videos.
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
+        // 1) Try admin-managed table first
         const { data: rows, error: dbError } = await supabase
           .from("promo_banners")
           .select("title, subtitle, cta, file_path, bucket")
@@ -51,8 +55,52 @@ const PromoBanner = () => {
           setSlides(mapped);
           return;
         }
+
+        // 2) Table missing or empty — list directly from storage bucket
         if (!cancelled) {
-          if (dbError) console.warn("[PromoBanner] db error:", dbError.message);
+          if (dbError) console.warn("[PromoBanner] db empty/failed:", dbError.message);
+        }
+        const bucketName = "promo-videos";
+        const { data: files, error: stError } = await supabase.storage.from(bucketName).list("", { limit: 20 });
+        if (!cancelled && !stError && files && files.length > 0) {
+          let allMedia: { name: string; path: string }[] = [];
+          const rootFiles = files.filter((f) => {
+            const name = f.name.toLowerCase();
+            return !name.startsWith(".") && (name.endsWith(".mp4") || name.endsWith(".webm") || name.endsWith(".mov") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg"));
+          });
+          allMedia.push(...rootFiles.map((f) => ({ name: f.name, path: f.name })));
+
+          const folders = files.filter((f) => f.id === null && !f.name.startsWith("."));
+          for (const folder of folders) {
+            const { data: subFiles } = await supabase.storage.from(bucketName).list(folder.name, { limit: 20 });
+            const subMedia = (subFiles || []).filter((f) => {
+              const name = f.name.toLowerCase();
+              return name.endsWith(".mp4") || name.endsWith(".webm") || name.endsWith(".mov") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg");
+            });
+            allMedia.push(...subMedia.map((f) => ({ name: f.name, path: `${folder.name}/${f.name}` })));
+          }
+
+          if (allMedia.length > 0) {
+            const mapped: BannerSlide[] = allMedia.map((m) => {
+              const { data } = supabase.storage.from(bucketName).getPublicUrl(m.path);
+              return {
+                src: data.publicUrl,
+                title: m.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "),
+                subtitle: "",
+                cta: "Explore",
+              };
+            });
+            setSlides(mapped);
+            return;
+          }
+        }
+        if (!cancelled && stError) {
+          console.warn("[PromoBanner] storage error:", stError.message);
+        }
+
+        // 3) Fall back to bundled local videos
+        if (!cancelled) {
+          console.warn("[PromoBanner] No promo videos found in storage; using local fallback.");
           setSlides(fallbackVideos);
         }
       } catch (err: any) {
@@ -92,16 +140,21 @@ const PromoBanner = () => {
   }, [slides.length, getNextValid]);
 
   // Mark a slide as broken and skip to next
-  // Defer state updates to avoid "Invalid hook call" when video fires onError
-  // synchronously during the render phase.
   const handleBroken = useCallback((index: number) => {
     if (brokenRef.current.has(index)) return;
     brokenRef.current.add(index);
-    requestAnimationFrame(() => {
-      setTick((t) => t + 1); // force re-render to hide dot
-      setCurrent((p) => (p === index ? getNextValid(index + 1, 1) : p));
-    });
+    setTick((t) => t + 1); // force re-render to hide dot
+    setCurrent((p) => (p === index ? getNextValid(index + 1, 1) : p));
   }, [getNextValid]);
+
+  // Attach error listeners via ref to avoid inline onError during render
+  useEffect(() => {
+    const el = mediaRef.current;
+    if (!el) return;
+    const onError = () => handleBroken(current);
+    el.addEventListener("error", onError);
+    return () => el.removeEventListener("error", onError);
+  }, [current, handleBroken]);
 
   if (slides.length === 0) return null;
 
@@ -116,6 +169,7 @@ const PromoBanner = () => {
         <div className="relative h-52 w-full sm:h-64 md:h-72">
           {isVideo ? (
             <video
+              ref={mediaRef as React.Ref<HTMLVideoElement>}
               key={`${slide.src}-${current}-${tick}`}
               src={slide.src}
               className="h-full w-full object-cover"
@@ -123,15 +177,14 @@ const PromoBanner = () => {
               loop
               playsInline
               muted
-              onError={() => handleBroken(current)}
             />
           ) : (
             <img
+              ref={mediaRef as React.Ref<HTMLImageElement>}
               key={`${slide.src}-${current}`}
               src={slide.src}
               alt={slide.title}
               className="h-full w-full object-cover"
-              onError={() => handleBroken(current)}
             />
           )}
 
