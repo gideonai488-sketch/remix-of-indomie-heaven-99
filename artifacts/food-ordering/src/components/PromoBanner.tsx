@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,7 +7,7 @@ import promoVideo1 from "@/assets/promo-video-1.mp4";
 import promoVideo2 from "@/assets/promo-video-2.mp4";
 import promoVideo3 from "@/assets/promo-video-3.mp4";
 
-const fallbackVideos = [
+const fallbackSlides = [
   { src: promoVideo1, title: "SpeedUp", subtitle: "Fastest delivery in Ghana", cta: "Order Now" },
   { src: promoVideo2, title: "New Bowls", subtitle: "Fresh every day", cta: "Explore" },
   { src: promoVideo3, title: "Jollof Special", subtitle: "Spice up your week", cta: "Order Now" },
@@ -24,19 +24,12 @@ const PromoBanner = () => {
   const navigate = useNavigate();
   const [slides, setSlides] = useState<BannerSlide[]>([]);
   const [current, setCurrent] = useState(0);
-  const brokenRef = useRef<Set<number>>(new Set());
-  const [tick, setTick] = useState(0); // force re-render when broken set changes
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const imgRef = useRef<HTMLImageElement>(null);
 
   // Load slides once on mount.
-  // Priority: 1) promo_banners table (if exists), 2) storage bucket promo-videos,
-  // 3) local hardcoded fallback videos.
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
+    (async () => {
       try {
-        // 1) Try admin-managed table first
         const { data: rows, error: dbError } = await supabase
           .from("promo_banners")
           .select("title, subtitle, cta, file_path, bucket")
@@ -57,10 +50,10 @@ const PromoBanner = () => {
           return;
         }
 
-        // 2) Table missing or empty — list directly from storage bucket
-        if (!cancelled) {
-          if (dbError) console.warn("[PromoBanner] db empty/failed:", dbError.message);
+        if (!cancelled && dbError) {
+          console.warn("[PromoBanner] db empty/failed:", dbError.message);
         }
+
         const bucketName = "promo-videos";
         const { data: files, error: stError } = await supabase.storage.from(bucketName).list("", { limit: 20 });
         if (!cancelled && !stError && files && files.length > 0) {
@@ -99,93 +92,37 @@ const PromoBanner = () => {
           console.warn("[PromoBanner] storage error:", stError.message);
         }
 
-        // 3) Fall back to bundled local videos
         if (!cancelled) {
           console.warn("[PromoBanner] No promo videos found in storage; using local fallback.");
-          setSlides(fallbackVideos);
+          setSlides(fallbackSlides);
         }
       } catch (err: any) {
         if (!cancelled) {
           console.error("[PromoBanner] unexpected error:", err?.message || err);
-          setSlides(fallbackVideos);
+          setSlides(fallbackSlides);
         }
       }
-    };
-    load();
+    })();
     return () => { cancelled = true; };
   }, []);
 
-  // Compute next valid index without triggering re-renders
-  const getNextValid = useCallback((start: number, dir: number) => {
-    if (slides.length === 0) return 0;
-    let idx = start;
-    let attempts = 0;
-    while (brokenRef.current.has(idx) && attempts < slides.length) {
-      idx = (idx + dir + slides.length) % slides.length;
-      attempts++;
-    }
-    return idx;
-  }, [slides.length]);
-
   const go = useCallback((dir: number) => {
-    setCurrent((p) => getNextValid(p + dir, dir));
-  }, [getNextValid]);
+    setCurrent((p) => (slides.length > 0 ? (p + dir + slides.length) % slides.length : 0));
+  }, [slides.length]);
 
   // Auto-rotate every 5.5s
   useEffect(() => {
     if (slides.length === 0) return;
     const t = setInterval(() => {
-      setCurrent((p) => getNextValid(p + 1, 1));
+      setCurrent((p) => (p + 1) % slides.length);
     }, 5500);
     return () => clearInterval(t);
-  }, [slides.length, getNextValid]);
-
-  // Mark a slide as broken and skip to next.
-  // Uses setTimeout to move state updates OUT of the render/event phase,
-  // preventing the "Invalid hook call" error when video fires onError.
-  const handleBroken = useCallback((index: number) => {
-    if (brokenRef.current.has(index)) return;
-    brokenRef.current.add(index);
-    setTimeout(() => {
-      setTick((t) => t + 1); // force re-render to hide dot
-      setCurrent((p) => (p === index ? getNextValid(index + 1, 1) : p));
-    }, 0);
-  }, [getNextValid]);
-
-  // Load media manually in useEffect to avoid onError firing during render.
-  // We set src via ref AFTER mount, but the JSX already has src so the
-  // browser starts loading immediately. The ref assignment just ensures
-  // the src is correct.
-  useEffect(() => {
-    if (slides.length === 0) return;
-    const slide = slides[current];
-    const isVideo = slide.src.match(/\.(mp4|webm|mov)(\?.*)?$/i);
-    if (isVideo) {
-      const el = videoRef.current;
-      if (!el) return;
-      const onError = () => handleBroken(current);
-      el.addEventListener("error", onError);
-      el.play().catch(() => {});
-      return () => {
-        el.removeEventListener("error", onError);
-        el.pause();
-      };
-    } else {
-      const el = imgRef.current;
-      if (!el) return;
-      const onError = () => handleBroken(current);
-      el.addEventListener("error", onError);
-      return () => {
-        el.removeEventListener("error", onError);
-      };
-    }
-  }, [current, slides, handleBroken]);
+  }, [slides.length]);
 
   if (slides.length === 0) return null;
 
   const slide = slides[current];
   const isVideo = slide.src.match(/\.(mp4|webm|mov)(\?.*)?$/i);
-  const brokenCount = brokenRef.current.size;
 
   return (
     <section className="container mx-auto px-4 py-5">
@@ -194,19 +131,27 @@ const PromoBanner = () => {
         <div className="relative h-52 w-full sm:h-64 md:h-72">
           {isVideo ? (
             <video
-              ref={videoRef}
+              src={slide.src}
               className="h-full w-full object-cover"
               autoPlay
               loop
               playsInline
               muted
               preload="none"
+              onError={(e) => {
+                // Prevent crash: do nothing, let browser handle it silently
+                e.stopPropagation();
+              }}
             />
           ) : (
             <img
-              ref={imgRef}
+              src={slide.src}
               alt={slide.title}
               className="h-full w-full object-cover"
+              onError={(e) => {
+                // Prevent crash: do nothing, let browser handle it silently
+                e.stopPropagation();
+              }}
             />
           )}
 
@@ -254,22 +199,14 @@ const PromoBanner = () => {
           {slides.map((_, i) => (
             <button
               key={i}
-              disabled={brokenRef.current.has(i)}
-              onClick={(e) => { e.stopPropagation(); if (!brokenRef.current.has(i)) setCurrent(i); }}
+              onClick={(e) => { e.stopPropagation(); setCurrent(i); }}
               className={`h-1.5 rounded-full transition-all ${
-                brokenRef.current.has(i) ? "w-1.5 bg-red-500/50" :
                 i === current ? "w-6 bg-white" : "w-1.5 bg-white/40"
               }`}
             />
           ))}
         </div>
       </div>
-      {/* Debug hint when all slides are broken */}
-      {brokenCount >= slides.length && (
-        <p className="mt-2 text-center text-xs text-red-500">
-          All banner media failed to load. Check your promo_banners table or video files.
-        </p>
-      )}
     </section>
   );
 };
