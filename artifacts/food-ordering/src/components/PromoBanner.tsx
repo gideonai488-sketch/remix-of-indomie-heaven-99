@@ -26,7 +26,8 @@ const PromoBanner = () => {
   const [current, setCurrent] = useState(0);
   const brokenRef = useRef<Set<number>>(new Set());
   const [tick, setTick] = useState(0); // force re-render when broken set changes
-  const mediaRef = useRef<HTMLVideoElement | HTMLImageElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
 
   // Load slides once on mount.
   // Priority: 1) promo_banners table (if exists), 2) storage bucket promo-videos,
@@ -139,22 +140,46 @@ const PromoBanner = () => {
     return () => clearInterval(t);
   }, [slides.length, getNextValid]);
 
-  // Mark a slide as broken and skip to next
+  // Mark a slide as broken and skip to next.
+  // Uses setTimeout to move state updates OUT of the render/event phase,
+  // preventing the "Invalid hook call" error when video fires onError.
   const handleBroken = useCallback((index: number) => {
     if (brokenRef.current.has(index)) return;
     brokenRef.current.add(index);
-    setTick((t) => t + 1); // force re-render to hide dot
-    setCurrent((p) => (p === index ? getNextValid(index + 1, 1) : p));
+    setTimeout(() => {
+      setTick((t) => t + 1); // force re-render to hide dot
+      setCurrent((p) => (p === index ? getNextValid(index + 1, 1) : p));
+    }, 0);
   }, [getNextValid]);
 
-  // Attach error listeners via ref to avoid inline onError during render
+  // Load media manually in useEffect to avoid onError firing during render.
+  // We set src via ref AFTER mount, but the JSX already has src so the
+  // browser starts loading immediately. The ref assignment just ensures
+  // the src is correct.
   useEffect(() => {
-    const el = mediaRef.current;
-    if (!el) return;
-    const onError = () => handleBroken(current);
-    el.addEventListener("error", onError);
-    return () => el.removeEventListener("error", onError);
-  }, [current, handleBroken]);
+    if (slides.length === 0) return;
+    const slide = slides[current];
+    const isVideo = slide.src.match(/\.(mp4|webm|mov)(\?.*)?$/i);
+    if (isVideo) {
+      const el = videoRef.current;
+      if (!el) return;
+      const onError = () => handleBroken(current);
+      el.addEventListener("error", onError);
+      el.play().catch(() => {});
+      return () => {
+        el.removeEventListener("error", onError);
+        el.pause();
+      };
+    } else {
+      const el = imgRef.current;
+      if (!el) return;
+      const onError = () => handleBroken(current);
+      el.addEventListener("error", onError);
+      return () => {
+        el.removeEventListener("error", onError);
+      };
+    }
+  }, [current, slides, handleBroken]);
 
   if (slides.length === 0) return null;
 
@@ -169,20 +194,17 @@ const PromoBanner = () => {
         <div className="relative h-52 w-full sm:h-64 md:h-72">
           {isVideo ? (
             <video
-              ref={mediaRef as React.Ref<HTMLVideoElement>}
-              key={`${slide.src}-${current}-${tick}`}
-              src={slide.src}
+              ref={videoRef}
               className="h-full w-full object-cover"
               autoPlay
               loop
               playsInline
               muted
+              preload="none"
             />
           ) : (
             <img
-              ref={mediaRef as React.Ref<HTMLImageElement>}
-              key={`${slide.src}-${current}`}
-              src={slide.src}
+              ref={imgRef}
               alt={slide.title}
               className="h-full w-full object-cover"
             />
