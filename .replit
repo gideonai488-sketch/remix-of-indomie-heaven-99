@@ -29,6 +29,10 @@ VITE_MAPBOX_TOKEN = "pk.eyJ1IjoidHJhdmVsbWF0ZTExMjMiLCJhIjoiY21oc2hmM3g5MGo0ajJz
 VITE_PAYSTACK_PUBLIC_KEY = "pk_live_671fccd651daf066804466572cfd0b7c47df2471"
 
 [[ports]]
+localPort = 3000
+externalPort = 4200
+
+[[ports]]
 localPort = 8080
 externalPort = 8080
 
