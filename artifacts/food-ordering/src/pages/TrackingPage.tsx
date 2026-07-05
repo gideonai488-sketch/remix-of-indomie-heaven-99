@@ -2,8 +2,9 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  ArrowLeft, Phone, CheckCircle2, Loader2, X, Star, MapPin, Clock, Route, Zap, CreditCard,
+  ArrowLeft, Phone, CheckCircle2, Loader2, X, Star, MapPin, Clock, Route, Zap, CreditCard, MessageSquare, X as XIcon
 } from "lucide-react";
+import { Chat } from "@/components/Chat";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import mapboxgl from "mapbox-gl";
@@ -353,13 +354,8 @@ const MapView = ({
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2"
           style={{ background: "linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%)" }}>
           <div className="text-5xl mb-1">🗺️</div>
-          <p className="text-white font-bold text-sm">Live map loading…</p>
-          <p className="text-white/50 text-xs text-center px-8">Rider is being tracked</p>
-          {isActive && (
-            <div className="mt-2 flex items-center gap-2 rounded-full bg-primary/80 px-4 py-2 text-xs font-semibold text-white">
-              <span className="animate-bounce">🏍️</span> Rider en route
-            </div>
-          )}
+          <p className="text-white font-bold">Map unavailable</p>
+          <p className="text-white/60 text-[10px] text-center px-8">We're still tracking your rider, but the map is having trouble loading.</p>
         </div>
       )}
 
@@ -498,7 +494,7 @@ const PaymentModal = ({ order, onClose }: { order: TrackOrder; onClose: () => vo
   const total = order.total_amount;
 
   const [loading, setLoading] = useState(false);
-  const [rating, setRating] = useState(0);
+
   // authorization_url returned by initialize-payment edge function
   const [paystackUrl, setPaystackUrl] = useState<string | null>(null);
 
@@ -594,8 +590,8 @@ const PaymentModal = ({ order, onClose }: { order: TrackOrder; onClose: () => vo
           <p className="mb-2 text-sm font-medium text-muted-foreground">Rate your rider</p>
           <div className="flex justify-center gap-1.5">
             {[1,2,3,4,5].map(s => (
-              <button key={s} onClick={() => setRating(s)}>
-                <Star className={`h-7 w-7 transition-colors ${s <= rating ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground/30"}`}/>
+              <button key={s} onClick={() => {}}>
+                <Star className={`h-7 w-7 transition-colors ${s <= 5 ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground/30"}`}/>
               </button>
             ))}
           </div>
@@ -622,13 +618,23 @@ const TrackingPage = () => {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const isService = searchParams.get("type") === "service";
+  const typeParam = searchParams.get("type");
+  const isService = typeParam === "service" || typeParam === "parcel" || typeParam === "errand";
 
   const [order, setOrder] = useState<TrackOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPayment, setShowPayment] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const [meterRunning, setMeterRunning] = useState(false);
   const [userCoords, setUserCoords] = useState<[number, number] | null>(null);
+
+  // Determine table name based on type
+  const getTableName = () => {
+    if (typeParam === "parcel") return "parcel_orders";
+    if (typeParam === "errand") return "errand_orders";
+    if (typeParam === "service") return "service_bookings";
+    return "orders";
+  };
 
   // Request user's GPS location for accurate map routing
   useEffect(() => {
@@ -640,50 +646,63 @@ const TrackingPage = () => {
     );
   }, []);
 
-  useEffect(() => {
-    if (!id) return;
-    supabase.from("orders").select("*, order_items(*)").eq("id", id).single()
-      .then(({ data }) => { if (data) { const o = data as unknown as TrackOrder; setOrder(o); if (o.status==="in_transit") setMeterRunning(true); } setLoading(false); });
-  }, [id]);
+  const handleStatusUpdate = useCallback((u: any) => {
+    setOrder(prev => {
+      if (!prev) return u;
+      if (prev.status === u.status && prev.rider_id === u.rider_id) return {...prev, ...u}; // minimal update
+      
+      if ((u.status==="confirmed" || u.status==="assigned" || u.status==="accepted") && !prev.rider_id && u.rider_id) {
+        toast.success("🎉 Rider accepted your order!");
+      }
+      if (u.status==="preparing" || u.status==="picked_up") toast.success("🏍️ Rider is on the way to pick up!");
+      if (u.status==="in_transit") { toast.success("🚀 Rider heading to you!"); setMeterRunning(true); }
+      if (u.status==="delivered") { setMeterRunning(false); toast.success("✅ Delivered!"); setShowPayment(true); }
+      if (u.status==="cancelled") toast.error("Order cancelled.");
+      
+      return {...prev, ...u};
+    });
+  }, []);
 
   useEffect(() => {
     if (!id) return;
+    const table = getTableName();
+    supabase.from(table).select("*, order_items(*)").eq("id", id).single()
+      .then(({ data }) => { 
+        if (data) { 
+          const o = data as unknown as TrackOrder; 
+          setOrder(o); 
+          if (o.status==="in_transit") setMeterRunning(true); 
+          if (o.status==="delivered") setShowPayment(true);
+        } 
+        setLoading(false); 
+      });
+  }, [id, typeParam]);
+
+  useEffect(() => {
+    if (!id) return;
+    const table = getTableName();
     const ch = supabase.channel(`order-track-${id}`)
-      .on("postgres_changes", { event:"UPDATE", schema:"public", table:"orders", filter:`id=eq.${id}` }, (payload) => {
-        const u = payload.new as unknown as TrackOrder;
-        setOrder(prev => prev ? {...prev, ...u} : u);
-        if (u.status==="confirmed" || u.status==="assigned" || u.status==="accepted") toast.success("🎉 Rider accepted your order!");
-        if (u.status==="preparing" || u.status==="picked_up") toast.success("🏍️ Rider is on the way to pick up!");
-        if (u.status==="in_transit") { toast.success("🚀 Rider heading to you!"); setMeterRunning(true); }
-        if (u.status==="delivered") { setMeterRunning(false); toast.success("✅ Delivered!"); setShowPayment(true); }
-        if (u.status==="cancelled") toast.error("Order cancelled.");
+      .on("postgres_changes", { event:"UPDATE", schema:"public", table: table, filter:`id=eq.${id}` }, (payload) => {
+        handleStatusUpdate(payload.new);
       }).subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [id]);
+  }, [id, typeParam, handleStatusUpdate]);
 
-  // Polling fallback — updates every 8s in case Realtime is not enabled on orders table
+  // Polling fallback — updates every 5s
   useEffect(() => {
-    if (!id) return;
+    if (!id || (order && (order.status === "delivered" || order.status === "cancelled"))) return;
+    const table = getTableName();
     const poll = setInterval(async () => {
       const { data } = await supabase
-        .from("orders")
+        .from(table)
         .select("*, order_items(*)")
         .eq("id", id)
         .single();
       if (!data) return;
-      const u = data as unknown as TrackOrder;
-      setOrder(prev => {
-        if (!prev || prev.status === u.status) return prev; // no change
-        if (u.status==="confirmed" || u.status==="assigned" || u.status==="accepted") toast.success("🎉 Rider accepted your order!");
-        if (u.status==="preparing" || u.status==="picked_up") toast.success("🏍️ Rider is on the way to pick up!");
-        if (u.status==="in_transit") { toast.success("🚀 Rider heading to you!"); setMeterRunning(true); }
-        if (u.status==="delivered") { setMeterRunning(false); toast.success("✅ Delivered!"); setShowPayment(true); }
-        if (u.status==="cancelled") toast.error("Order cancelled.");
-        return u;
-      });
-    }, 8000);
+      handleStatusUpdate(data);
+    }, 5000);
     return () => clearInterval(poll);
-  }, [id]);
+  }, [id, typeParam, order?.status, handleStatusUpdate]);
 
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>;
   if (!order) return <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background p-4"><p className="text-muted-foreground">Order not found.</p><Button onClick={()=>navigate("/")}>Go Home</Button></div>;
@@ -801,7 +820,7 @@ const TrackingPage = () => {
               <Route className="h-4 w-4 text-primary"/>
               <p className="text-sm font-bold text-foreground">Fare Breakdown</p>
             </div>
-            <div className="space-y-2 text-sm">
+            <div className="space-y-2 text-xs">
               <div className="flex justify-between"><span className="text-muted-foreground">Base fare</span><span className="font-medium">GH₵{BASE_FARE}.00</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Per km</span><span className="font-medium">GH₵2.00/km</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Per minute</span><span className="font-medium">GH₵0.30/min</span></div>
@@ -820,9 +839,17 @@ const TrackingPage = () => {
               <p className="font-bold text-foreground">SpeedUp Rider</p>
               <div className="flex items-center gap-1">{[1,2,3,4,5].map(s=><Star key={s} className="h-3 w-3 text-accent fill-accent"/>)}<span className="ml-1 text-xs text-muted-foreground">4.9</span></div>
             </div>
-            <a href="tel:+233000000000" className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary hover:bg-primary/20">
-              <Phone className="h-5 w-5"/>
-            </a>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setShowChat(true)}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary hover:bg-primary/20"
+              >
+                <MessageSquare className="h-5 w-5"/>
+              </button>
+              <a href="tel:+233000000000" className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary hover:bg-primary/20">
+                <Phone className="h-5 w-5"/>
+              </a>
+            </div>
           </div>
         )}
 
@@ -832,8 +859,9 @@ const TrackingPage = () => {
             onClick={async () => {
               if (!window.confirm("Cancel this order?")) return;
               try {
-                const { error: dbErr, status: httpStatus } = await (supabase as any)
-                  .from("orders")
+                const table = getTableName();
+                const { error: dbErr } = await (supabase as any)
+                  .from(table)
                   .update({ status: "cancelled" })
                   .eq("id", id);
 
@@ -857,6 +885,18 @@ const TrackingPage = () => {
 
       {showPayment && order && (
         <PaymentModal order={order} onClose={()=>{ setShowPayment(false); navigate("/profile"); }}/>
+      )}
+
+      {showChat && order && (
+        <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center p-4">
+          <div className="w-full max-w-md animate-in slide-in-from-bottom duration-300">
+            <Chat 
+              orderId={order.id} 
+              orderType={typeParam as any || "food"} 
+              onClose={() => setShowChat(false)} 
+            />
+          </div>
+        </div>
       )}
     </div>
   );

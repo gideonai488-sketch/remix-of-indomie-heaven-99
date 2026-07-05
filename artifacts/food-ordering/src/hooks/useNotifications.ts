@@ -84,7 +84,19 @@ export const useNotifications = () => {
           if (newNotif.user_id === user.id || newNotif.user_id === null) {
             setNotifications((prev) => [newNotif, ...prev]);
             setUnreadCount((c) => c + 1);
-            toast(newNotif.title, { description: newNotif.body });
+            
+            // Handle sound
+            const soundFile = newNotif.data?.sound || "message.caf";
+            const audio = new Audio(`/sounds/${soundFile.replace(".caf", ".mp3")}`);
+            audio.play().catch(e => console.log("Sound play failed", e));
+
+            toast(newNotif.title, { 
+              description: newNotif.body,
+              action: newNotif.data?.order_id ? {
+                label: "View",
+                onClick: () => window.location.href = `#/track/${newNotif.data?.order_id}`
+              } : undefined
+            });
           }
         }
       )
