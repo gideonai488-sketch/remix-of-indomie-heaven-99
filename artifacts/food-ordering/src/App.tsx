@@ -49,6 +49,8 @@ const CheckoutPage = lazy(() => import("./pages/CheckoutPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const ServicesPage = lazy(() => import("./pages/ServicesPage"));
 const ServiceRequestPage = lazy(() => import("./pages/ServiceRequestPage"));
+const ParcelOrderPage = lazy(() => import("./pages/ParcelOrderPage"));
+const ErrandOrderPage = lazy(() => import("./pages/ErrandOrderPage"));
 const TrackingPage = lazy(() => import("./pages/TrackingPage"));
 const DemoTrackingPage = lazy(() => import("./pages/DemoTrackingPage"));
 const OrdersPage = lazy(() => import("./pages/OrdersPage"));
@@ -110,6 +112,8 @@ const App = () => {
                     <Route path="/checkout" element={<CheckoutPage />} />
                     <Route path="/services" element={<ServicesPage />} />
                     <Route path="/service-request/:type" element={<ServiceRequestPage />} />
+                    <Route path="/parcel" element={<ParcelOrderPage />} />
+                    <Route path="/errand" element={<ErrandOrderPage />} />
                     <Route path="/track/:id" element={<TrackingPage />} />
                     <Route path="/demo" element={<DemoTrackingPage />} />
                     <Route path="*" element={<NotFound />} />
