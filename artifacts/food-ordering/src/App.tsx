@@ -9,7 +9,7 @@ import { lazy, Suspense, useEffect, Component, ReactNode } from "react";
 import AppLoadingSkeleton from "@/components/AppLoadingSkeleton";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { supabase } from "@/integrations/supabase/client";
-import { PaymentPopup } from "@/components/PaymentPopup";
+// import { PaymentPopup } from "@/components/PaymentPopup";
 
 class AppErrorBoundary extends Component<{ children: ReactNode }, { crashed: boolean }> {
   state = { crashed: false };
@@ -97,7 +97,7 @@ const App = () => {
             <CartProvider>
               <SplashDismisser />
               <PushRegistrar />
-              <PaymentPopup />
+              {/* <PaymentPopup /> */}
               <Toaster />
               <Sonner />
               <Router>
