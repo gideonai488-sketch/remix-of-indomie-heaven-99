@@ -27,23 +27,34 @@ const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: numbe
   return R * c;
 };
 
-// Calculate fare based on distance
+// Calculate fare based on distance using backend pricing tiers
+// Tiers: ≤4km=₵20, ≤8=₵25, ≤12=₵30, ≤15=₵35, ≤20=₵45, +₵3/km
 const calculateFareFromDistance = (distanceKm: number): FareEstimate => {
-  // Base fare: GH₵ 5
-  const baseFare = 5;
-  // Per km rate: GH₵ 2 per km
-  const perKmRate = 2;
-  // Minimum fare: GH₵ 10
-  const minimumFare = 10;
+  let fee: number;
 
-  const distanceFare = Math.max(baseFare + distanceKm * perKmRate, minimumFare);
-  const platformFee = Math.round(distanceFare * 0.1 * 100) / 100; // 10% platform fee
-  const riderPayout = Math.round((distanceFare - platformFee) * 100) / 100;
+  if (distanceKm <= 4) {
+    fee = 20;
+  } else if (distanceKm <= 8) {
+    fee = 25;
+  } else if (distanceKm <= 12) {
+    fee = 30;
+  } else if (distanceKm <= 15) {
+    fee = 35;
+  } else if (distanceKm <= 20) {
+    fee = 45;
+  } else {
+    // Beyond 20km: base 45 + 3 per km for each km over 20
+    fee = 45 + (distanceKm - 20) * 3;
+  }
+
+  // Platform fee: GH₵5 (fixed, not percentage)
+  const platformFee = 5;
+  const riderPayout = fee - platformFee;
 
   return {
     distance_km: Math.round(distanceKm * 10) / 10,
-    fee: Math.round(distanceFare * 100) / 100,
-    rider_payout: riderPayout,
+    fee: Math.round(fee * 100) / 100,
+    rider_payout: Math.round(riderPayout * 100) / 100,
     platform_fee: platformFee,
   };
 };
@@ -64,7 +75,7 @@ export const usePriceCalculator = () => {
         throw new Error("Pickup and dropoff locations are too close");
       }
 
-      // Calculate fare based on distance
+      // Calculate fare based on distance using backend pricing tiers
       const fareEstimate = calculateFareFromDistance(distanceKm);
       setEstimate(fareEstimate);
       return fareEstimate;
