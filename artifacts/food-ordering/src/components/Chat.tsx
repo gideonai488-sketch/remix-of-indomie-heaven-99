@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Send, Loader2, User, Bot } from "lucide-react";
+import { Send, Loader2, User, Bot, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -71,7 +71,7 @@ export const Chat = ({ orderId, orderType, onClose }: ChatProps) => {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "messages", filter: `${col}=eq.${orderId}` },
-        (payload) => {
+        (payload: any) => {
           if (payload.eventType === "INSERT") {
             const msg = payload.new as Message;
             setMessages(prev => [...prev, msg]);

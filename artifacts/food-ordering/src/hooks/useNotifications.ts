@@ -78,7 +78,7 @@ export const useNotifications = () => {
           schema: "public",
           table: "notifications",
         },
-        (payload) => {
+        (payload: any) => {
           const newNotif = payload.new as unknown as Notification;
           // Only add if it's for this user or broadcast (null user_id)
           if (newNotif.user_id === user.id || newNotif.user_id === null) {

@@ -49,7 +49,7 @@ export const usePromoVideos = () => {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "promo_videos" },
-        (payload) => {
+        (payload: any) => {
           if (payload.eventType === "INSERT") {
             setVideos((prev) => [...prev, payload.new as PromoVideo].sort((a, b) => a.sort_order - b.sort_order));
           } else if (payload.eventType === "UPDATE") {

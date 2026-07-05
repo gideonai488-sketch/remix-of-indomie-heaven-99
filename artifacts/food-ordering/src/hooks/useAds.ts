@@ -57,7 +57,7 @@ export const useAds = (placement?: string) => {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "ads" },
-        (payload) => {
+        (payload: any) => {
           if (payload.eventType === "INSERT") {
             setAds((prev) => [...prev, payload.new as Ad].sort((a, b) => a.sort_order - b.sort_order));
           } else if (payload.eventType === "UPDATE") {

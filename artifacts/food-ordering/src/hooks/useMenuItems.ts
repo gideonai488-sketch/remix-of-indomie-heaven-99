@@ -59,7 +59,7 @@ export const useMenuItems = () => {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "menu_items" },
-        (payload) => {
+        (payload: any) => {
           console.log("Menu item update:", payload);
           if (payload.eventType === "INSERT") {
             setItems((prev) => [...prev, payload.new as MenuItem]);

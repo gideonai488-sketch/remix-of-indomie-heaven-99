@@ -102,7 +102,7 @@ const ErrandOrderPage = () => {
   };
 
   const handleSubmit = async () => {
-    if (!validate() || !user) return;
+    if (!validate() || !user || !pickupLocation || !dropoffLocation) return;
     setLoading(true);
     try {
       const totalFee = estimate?.fee || 10;
@@ -113,10 +113,10 @@ const ErrandOrderPage = () => {
         .insert({
           user_id: user.id,
           customer_id: user.id,
-          pickup_latitude: pickupLocation.lat,
-          pickup_longitude: pickupLocation.lng,
-          dropoff_latitude: dropoffLocation.lat,
-          dropoff_longitude: dropoffLocation.lng,
+          pickup_latitude: pickupLocation!.lat,
+          pickup_longitude: pickupLocation!.lng,
+          dropoff_latitude: dropoffLocation!.lat,
+          dropoff_longitude: dropoffLocation!.lng,
           pickup_address: pickupLocation.name,
           delivery_address: dropoffLocation.name,
           customer_name: customerName,

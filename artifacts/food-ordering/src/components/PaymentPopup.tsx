@@ -35,7 +35,7 @@ export const PaymentPopup = () => {
           table: "payment_requests", 
           filter: `customer_id=eq.${user.id}` 
         },
-        (payload) => {
+        (payload: any) => {
           const newReq = payload.new as PaymentRequest;
           if (newReq.status === "pending") {
             setRequest(newReq);
